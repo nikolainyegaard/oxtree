@@ -288,7 +288,12 @@ impl OxTreeApp {
             Some(e) => {
                 let mut msg = format!("Finished. Elapsed time: {}", format::elapsed(e));
                 if unreadable > 0 {
-                    msg.push_str(&format!("  [{unreadable} directories could not be read]"));
+                    let noun = if unreadable == 1 {
+                        "directory"
+                    } else {
+                        "directories"
+                    };
+                    msg.push_str(&format!("  [{unreadable} {noun} could not be read]"));
                 }
                 self.set_status(msg, true);
             }

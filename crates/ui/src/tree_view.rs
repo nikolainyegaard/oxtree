@@ -119,15 +119,31 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
             Vec2::new(w, theme::ROW_HEIGHT),
         );
         let resp = ui.interact(rect, ui.id().with(("hdr", label)), Sense::click());
-        let mut text = label.to_string();
-        if app.sort.column == col {
-            text.push_str(if app.sort.ascending { " ▲" } else { " ▼" });
-        }
+        let text = label.to_string();
+        let sorted_here = app.sort.column == col;
         let anchor = if align == Align2::LEFT_CENTER {
             Pos2::new(x, y)
         } else {
-            Pos2::new(x + w, y)
+            Pos2::new(x + w - if sorted_here { 12.0 } else { 0.0 }, y)
         };
+        if sorted_here {
+            let cx = if align == Align2::LEFT_CENTER {
+                x + w - 8.0
+            } else {
+                x + w - 5.0
+            };
+            triangle(
+                &painter,
+                Pos2::new(cx, y),
+                4.0,
+                if app.sort.ascending {
+                    Dir::Up
+                } else {
+                    Dir::Down
+                },
+                weak,
+            );
+        }
         painter.text(
             anchor,
             align,
@@ -165,8 +181,17 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
             let Some(row) = app.rows.get(i).copied() else {
                 continue;
             };
-            let (rect, resp) =
-                ui.allocate_exact_size(Vec2::new(width, theme::ROW_HEIGHT), Sense::click());
+            // The id is the node, not the row position, so that after rows
+            // shift (expand, collapse, scroll) egui's hover and click state
+            // still refers to the same item instead of whatever row now sits
+            // at that index.
+            let (rect, _) =
+                ui.allocate_exact_size(Vec2::new(width, theme::ROW_HEIGHT), Sense::hover());
+            let resp = ui.interact(
+                rect,
+                egui::Id::new(("oxtree-row", row.node)),
+                Sense::click(),
+            );
             let cols = columns(rect.left() + 4.0, rect.width() - 8.0);
             let painter = ui.painter_at(rect);
             let is_selected = selected == Some(row.node);
@@ -185,11 +210,11 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
                 Rect::from_center_size(Pos2::new(indent + 6.0, y), Vec2::splat(theme::ROW_HEIGHT));
             if expandable {
                 let open = app.expanded.contains(&row.node);
-                painter.text(
+                triangle(
+                    &painter,
                     Pos2::new(indent + 6.0, y),
-                    Align2::CENTER_CENTER,
-                    if open { "▾" } else { "▸" },
-                    font.clone(),
+                    4.5,
+                    if open { Dir::Down } else { Dir::Right },
                     text_color,
                 );
             }
@@ -352,6 +377,36 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
             }
         }
     }
+}
+
+#[derive(Clone, Copy)]
+enum Dir {
+    Up,
+    Down,
+    Right,
+}
+
+/// A filled triangle drawn with the painter. The default fonts have no
+/// glyph for the small triangle code points, so they rendered as boxes.
+fn triangle(painter: &egui::Painter, center: Pos2, r: f32, dir: Dir, color: Color32) {
+    let points = match dir {
+        Dir::Up => vec![
+            Pos2::new(center.x, center.y - r),
+            Pos2::new(center.x + r, center.y + r * 0.7),
+            Pos2::new(center.x - r, center.y + r * 0.7),
+        ],
+        Dir::Down => vec![
+            Pos2::new(center.x - r, center.y - r * 0.7),
+            Pos2::new(center.x + r, center.y - r * 0.7),
+            Pos2::new(center.x, center.y + r),
+        ],
+        Dir::Right => vec![
+            Pos2::new(center.x - r * 0.7, center.y - r),
+            Pos2::new(center.x + r, center.y),
+            Pos2::new(center.x - r * 0.7, center.y + r),
+        ],
+    };
+    painter.add(egui::Shape::convex_polygon(points, color, Stroke::NONE));
 }
 
 /// Arrow keys, Enter and Backspace move the selection when no text field
