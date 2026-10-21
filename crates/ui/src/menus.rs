@@ -83,6 +83,85 @@ fn open_dialog(app: &mut OxTreeApp) {
     }
 }
 
+/// Right-click menu for the tree and the treemap: the Edit items, the
+/// cleanups and the treemap actions, all acting on the current selection.
+pub fn context_menu(app: &mut OxTreeApp, ui: &mut Ui) {
+    let ctx = ui.ctx().clone();
+    ui.set_min_width(220.0);
+    let has_sel = app.selected.is_some();
+    if ui
+        .add_enabled(
+            has_sel,
+            egui::Button::new("Copy Path to Clipboard").shortcut_text(ctx.format_shortcut(&COPY)),
+        )
+        .clicked()
+    {
+        app.copy_path(&ctx);
+        ui.close();
+    }
+    let can_trash = app.selected.map(|n| n != 0).unwrap_or(false) && app.scan.is_none();
+    if ui
+        .add_enabled(
+            can_trash,
+            egui::Button::new("Move to Trash").shortcut_text(ctx.format_shortcut(&TRASH)),
+        )
+        .clicked()
+    {
+        app.move_to_trash();
+        ui.close();
+    }
+    ui.separator();
+    let count = app.cleanups.len();
+    for i in 0..count {
+        let (title, hotkey) = match app.cleanups.get(i) {
+            Some(c) => (c.display_title(), c.hotkey.clone()),
+            None => continue,
+        };
+        if ui
+            .add_enabled(
+                app.cleanup_applies(i),
+                egui::Button::new(title).shortcut_text(hotkey),
+            )
+            .clicked()
+        {
+            app.request_cleanup(i);
+            ui.close();
+        }
+    }
+    ui.separator();
+    if ui
+        .add(egui::Button::new("Treemap Zoom In").shortcut_text(ctx.format_shortcut(&ZOOM_IN)))
+        .clicked()
+    {
+        app.treemap_zoom_in();
+        ui.close();
+    }
+    if ui
+        .add(egui::Button::new("Treemap Zoom Out").shortcut_text(ctx.format_shortcut(&ZOOM_OUT)))
+        .clicked()
+    {
+        app.treemap_zoom_out();
+        ui.close();
+    }
+    if ui
+        .add(
+            egui::Button::new("Reset Treemap Zoom").shortcut_text(ctx.format_shortcut(&ZOOM_RESET)),
+        )
+        .clicked()
+    {
+        app.treemap_zoom_reset();
+        ui.close();
+    }
+    ui.separator();
+    if ui
+        .add(egui::Button::new("Up One Level").shortcut_text(ctx.format_shortcut(&GO_UP)))
+        .clicked()
+    {
+        app.go_up();
+        ui.close();
+    }
+}
+
 /// `Ctrl+Shift+Delete` style text into a shortcut.
 pub fn parse_hotkey(text: &str) -> Option<KeyboardShortcut> {
     let mut mods = Modifiers::NONE;

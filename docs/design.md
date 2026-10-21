@@ -68,6 +68,7 @@ Details panel labels: Total Size, Items, Files, Subdirs, Size, Allocated, Last M
 | Action | How |
 |--------|-----|
 | Select | Click a row or a tile |
+| Context menu | Right-click a row or a tile: copy path, trash, cleanups, treemap zoom, up one level |
 | Expand or collapse | Click the arrow, double click the row, Right and Left arrow keys, Enter |
 | Move selection | Up, Down, Home, End |
 | Zoom treemap into the selection | Ctrl+Plus, View menu, double click a tile, Ctrl+wheel up |

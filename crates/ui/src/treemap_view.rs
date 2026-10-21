@@ -94,11 +94,12 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
             app.select(n, true);
             app.treemap_zoom_in();
         }
-    } else if resp.clicked() {
+    } else if resp.clicked() || resp.secondary_clicked() {
         if let Some(n) = app.treemap.hover {
             app.select(n, true);
         }
     }
+    resp.context_menu(|ui| crate::menus::context_menu(app, ui));
     if resp.hovered() {
         // egui routes a wheel with the zoom modifier held into its zoom
         // factor and leaves the scroll delta at zero, so read the raw wheel

@@ -349,6 +349,10 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
                 text_color,
             );
 
+            if resp.secondary_clicked() {
+                app.select(row.node, false);
+            }
+            resp.context_menu(|ui| crate::menus::context_menu(app, ui));
             if resp.double_clicked() {
                 clicked = Some((row.node, false, true));
             } else if resp.clicked() {
