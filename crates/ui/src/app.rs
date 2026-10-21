@@ -57,7 +57,10 @@ pub struct TreemapState {
     pub texture_size: (usize, usize),
     pub tiles: Arc<Vec<Tile>>,
     pub job: Option<Receiver<RenderResult>>,
+    /// Bumped by zoom, reset and Rebuild Treemap; a texture is current only
+    /// when `rendered_generation` matches.
     pub generation: u64,
+    pub rendered_generation: u64,
     pub hover: Option<NodeId>,
     /// The size the view wants and when it last changed, for the rebuild delay.
     pub wanted_size: (usize, usize),
@@ -401,6 +404,7 @@ impl OxTreeApp {
                     }
                     self.treemap.texture_size = (result.width, result.height);
                     self.treemap.tiles = result.tiles;
+                    self.treemap.rendered_generation = result.generation;
                     self.treemap.rebuilds += 1;
                     if let Some(st) = &mut self.stats {
                         st.rebuilds_in_window += 1;
@@ -482,7 +486,11 @@ impl OxTreeApp {
                     out.events = None;
                     let had_errors =
                         out.lines.iter().any(|(err, _)| *err) || out.exit != Some(Some(0));
-                    if had_errors || out.policy == OutputPolicy::Always {
+                    // ShowNever means never, as in QDirStat; errors still
+                    // reach the status bar below.
+                    if out.policy != OutputPolicy::Never
+                        && (had_errors || out.policy == OutputPolicy::Always)
+                    {
                         out.open = true;
                     }
                     refresh = Some(out.refresh);
@@ -669,7 +677,7 @@ impl OxTreeApp {
         }
         let fresh = self.treemap.texture.is_some()
             && self.treemap.texture_size == (width, height)
-            && self.treemap.tiles.first().map(|t| t.node) == Some(self.treemap_root);
+            && self.treemap.rendered_generation == self.treemap.generation;
         if fresh {
             return;
         }
@@ -679,7 +687,7 @@ impl OxTreeApp {
         }
         // With a delay set, a size change waits until the size has settled.
         // Zoom and rebuild requests go at once.
-        let root_changed = self.treemap.tiles.first().map(|t| t.node) != Some(self.treemap_root);
+        let root_changed = self.treemap.rendered_generation != self.treemap.generation;
         if self.treemap.texture.is_some() && !root_changed {
             if let Some(changed) = self.treemap.size_changed_at {
                 let since = changed.elapsed();
@@ -768,13 +776,7 @@ impl OxTreeApp {
         else {
             return false;
         };
-        c.active
-            && c.works_for(tree.kind(n))
-            && self
-                .output
-                .as_ref()
-                .map(|o| o.events.is_none())
-                .unwrap_or(true)
+        c.active && c.works_for(tree.kind(n))
     }
 
     pub fn request_cleanup(&mut self, index: usize) {

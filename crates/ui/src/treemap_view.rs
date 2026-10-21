@@ -100,11 +100,23 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
         }
     }
     if resp.hovered() {
-        let scroll = ui.input(|i| i.smooth_scroll_delta.y);
-        let ctrl = ui.input(|i| i.modifiers.ctrl);
-        if ctrl && scroll > 0.0 {
+        // egui routes a wheel with the zoom modifier held into its zoom
+        // factor and leaves the scroll delta at zero, so read the raw wheel
+        // events: one per notch, with the modifiers they came with.
+        let wheel: f32 = ui.input(|i| {
+            i.events
+                .iter()
+                .filter_map(|e| match e {
+                    egui::Event::MouseWheel {
+                        delta, modifiers, ..
+                    } if modifiers.ctrl => Some(delta.y),
+                    _ => None,
+                })
+                .sum()
+        });
+        if wheel > 0.0 {
             app.treemap_zoom_in();
-        } else if ctrl && scroll < 0.0 {
+        } else if wheel < 0.0 {
             app.treemap_zoom_out();
         }
     }
