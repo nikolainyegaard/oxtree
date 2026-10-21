@@ -37,25 +37,37 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
         );
         return;
     };
+    // The texture is drawn at its own pixel size, anchored top left, never
+    // stretched. While a resize settles, the map keeps its shape and the
+    // uncovered strip shows the background, as QDirStat's view does.
+    let (tw, th) = app.treemap.texture_size;
+    let ppp = ui.ctx().pixels_per_point();
+    let tex_points = Vec2::new(tw as f32 / ppp, th as f32 / ppp);
+    let drawn = Rect::from_min_size(rect.min, tex_points).intersect(rect);
+    let uv_max = Pos2::new(
+        (drawn.width() / tex_points.x.max(1.0)).min(1.0),
+        (drawn.height() / tex_points.y.max(1.0)).min(1.0),
+    );
     painter.image(
         tex.id(),
-        rect,
-        Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+        drawn,
+        Rect::from_min_max(Pos2::ZERO, uv_max),
         egui::Color32::WHITE,
     );
 
-    let (tw, th) = app.treemap.texture_size;
     let to_tex = |p: Pos2| -> (f64, f64) {
-        let fx = ((p.x - rect.left()) / rect.width()).clamp(0.0, 1.0);
-        let fy = ((p.y - rect.top()) / rect.height()).clamp(0.0, 1.0);
-        (fx as f64 * tw as f64, fy as f64 * th as f64)
+        (
+            ((p.x - rect.left()) * ppp) as f64,
+            ((p.y - rect.top()) * ppp) as f64,
+        )
     };
     let to_screen = |r: oxtree_core::layout::Rect| -> Rect {
-        let sx = rect.width() / tw.max(1) as f32;
-        let sy = rect.height() / th.max(1) as f32;
         Rect::from_min_size(
-            Pos2::new(rect.left() + r.x as f32 * sx, rect.top() + r.y as f32 * sy),
-            Vec2::new(r.w as f32 * sx, r.h as f32 * sy),
+            Pos2::new(
+                rect.left() + r.x as f32 / ppp,
+                rect.top() + r.y as f32 / ppp,
+            ),
+            Vec2::new(r.w as f32 / ppp, r.h as f32 / ppp),
         )
     };
 

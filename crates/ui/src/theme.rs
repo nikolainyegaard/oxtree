@@ -12,6 +12,10 @@ pub const CURRENT_ITEM: Color32 = Color32::from_rgb(0xff, 0x00, 0x00);
 pub const FILE_FILL: [u8; 3] = [0xde, 0x8d, 0x53];
 /// `[Treemaps] MinTileSize`
 pub const MIN_TILE_SIZE: f64 = 3.0;
+/// Upper bound on treemap rebuilds per second during a resize, so a high
+/// refresh rate display does not turn a drag into a benchmark. 120 keeps
+/// every frame on a 60 Hz screen; a 60 cap would skip frames there.
+pub const TREEMAP_MAX_REBUILD_HZ: u32 = 120;
 /// Below this many points on a side the treemap is not rebuilt, QDirStat's
 /// way of letting the user shrink it to skip the cost.
 pub const TREEMAP_UPDATE_MIN_SIZE: f32 = 20.0;

@@ -105,6 +105,7 @@ impl eframe::App for Shell {
         if app.show_details {
             egui::Panel::right("details")
                 .resizable(true)
+                .min_size(260.0)
                 .default_size(260.0)
                 .show(root, |ui| {
                     egui::ScrollArea::vertical()

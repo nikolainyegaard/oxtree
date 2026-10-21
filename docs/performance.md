@@ -67,7 +67,7 @@ Facts behind the walker, so nobody re-derives them:
 - Layout is a traversal because the arena stores children largest first. One scratch `Vec` is reused for rows.
 - Shading splits the pixel rows into one band per thread with `chunks_mut`, each thread walking every tile and clipping to its band. No unsafe, no shared mutation, near-linear scaling.
 - The GPU route (a vertex buffer of rectangles plus cushion coefficients, shading in a fragment shader through a glow paint callback) would make a resize cost layout plus an upload at any window size and remove the texture. Not needed at 7.7 ms for a 1900x600 map; worth it for 4K.
-- While a rebuild is in flight the old texture is drawn stretched to the new size, so a resize drag never shows a blank panel.
+- During a resize the treemap is rebuilt every frame, one job in flight at a time; the previous texture is drawn at its own pixel size, anchored top left and clipped, never stretched. Measured on a five second resize drag with `OXTREE_STATS=1`: about 55 rebuilds a second at 110 to 135% of one core, idle unaffected. A QDirStat-style settle delay was tried and measured at one rebuild a second and 5 to 9%, and rejected: a drag lasts a second or two, and the per-frame rebuild is what makes the speed visible. `OXTREE_REBUILD_DELAY_MS=200` turns the delay on. Rebuilds are capped at 120 a second (`TREEMAP_MAX_REBUILD_HZ`) so a 500 Hz display cannot multiply the cost; 120 rather than 60 because a 60 cap skips every other frame on a 60 Hz screen whenever the timer lands early.
 
 ## Launch
 

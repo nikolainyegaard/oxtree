@@ -59,7 +59,11 @@ pub struct TreemapState {
     pub job: Option<Receiver<RenderResult>>,
     pub generation: u64,
     pub hover: Option<NodeId>,
-    pub last_build_ms: f64,
+    /// The size the view wants and when it last changed, for the rebuild delay.
+    pub wanted_size: (usize, usize),
+    pub size_changed_at: Option<Instant>,
+    pub job_started_at: Option<Instant>,
+    pub rebuilds: u64,
 }
 
 pub struct OutputWindow {
@@ -123,6 +127,31 @@ pub struct OxTreeApp {
 
     pub screenshot: Option<(PathBuf, u32)>,
     pub quit_after_screenshot: bool,
+
+    /// How long the treemap size has to hold still before a rebuild. Zero,
+    /// the default, rebuilds every frame during a resize: measured at about
+    /// 120% of one core for the duration of a drag, which is fine. QDirStat
+    /// waits 200 ms; `OXTREE_REBUILD_DELAY_MS` sets that here.
+    pub rebuild_delay: Duration,
+    /// `OXTREE_STATS=1` prints rebuild counts and process CPU time once a second.
+    pub stats: Option<Stats>,
+}
+
+pub struct Stats {
+    pub window_start: Instant,
+    pub cpu_ms_at_start: u64,
+    pub rebuilds_in_window: u64,
+}
+
+/// User plus system CPU time of this process in milliseconds, from
+/// /proc/self/stat. Assumes the usual 100 clock ticks per second.
+pub fn process_cpu_ms() -> Option<u64> {
+    let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
+    let after_comm = stat.rsplit_once(')')?.1;
+    let mut fields = after_comm.split_whitespace();
+    let utime: u64 = fields.nth(11)?.parse().ok()?;
+    let stime: u64 = fields.next()?.parse().ok()?;
+    Some((utime + stime) * 10)
 }
 
 impl OxTreeApp {
@@ -176,6 +205,17 @@ impl OxTreeApp {
                 .min(16),
             screenshot: screenshot.map(|p| (p, 4)),
             quit_after_screenshot: false,
+            rebuild_delay: Duration::from_millis(
+                std::env::var("OXTREE_REBUILD_DELAY_MS")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0),
+            ),
+            stats: std::env::var_os("OXTREE_STATS").map(|_| Stats {
+                window_start: Instant::now(),
+                cpu_ms_at_start: process_cpu_ms().unwrap_or(0),
+                rebuilds_in_window: 0,
+            }),
         };
         if let Some(n) = note {
             app.set_status(n, false);
@@ -361,8 +401,32 @@ impl OxTreeApp {
                     }
                     self.treemap.texture_size = (result.width, result.height);
                     self.treemap.tiles = result.tiles;
+                    self.treemap.rebuilds += 1;
+                    if let Some(st) = &mut self.stats {
+                        st.rebuilds_in_window += 1;
+                    }
                 }
             }
+        }
+        if let Some(st) = &mut self.stats {
+            let elapsed = st.window_start.elapsed();
+            if elapsed >= Duration::from_secs(1) {
+                let cpu = process_cpu_ms().unwrap_or(0);
+                let used = cpu.saturating_sub(st.cpu_ms_at_start);
+                if st.rebuilds_in_window > 0 || used > 0 {
+                    eprintln!(
+                        "stats: {} treemap rebuilds in {:.1} s, process cpu {} ms ({:.0}% of one core)",
+                        st.rebuilds_in_window,
+                        elapsed.as_secs_f64(),
+                        used,
+                        used as f64 / elapsed.as_secs_f64() / 10.0
+                    );
+                }
+                st.window_start = Instant::now();
+                st.cpu_ms_at_start = cpu;
+                st.rebuilds_in_window = 0;
+            }
+            ctx.request_repaint_after(Duration::from_millis(250));
         }
 
         if let Some(rx) = &self.dir_picker {
@@ -609,9 +673,34 @@ impl OxTreeApp {
         if fresh {
             return;
         }
+        if (width, height) != self.treemap.wanted_size {
+            self.treemap.wanted_size = (width, height);
+            self.treemap.size_changed_at = Some(Instant::now());
+        }
+        // With a delay set, a size change waits until the size has settled.
+        // Zoom and rebuild requests go at once.
+        let root_changed = self.treemap.tiles.first().map(|t| t.node) != Some(self.treemap_root);
+        if self.treemap.texture.is_some() && !root_changed {
+            if let Some(changed) = self.treemap.size_changed_at {
+                let since = changed.elapsed();
+                if since < self.rebuild_delay {
+                    ctx.request_repaint_after(self.rebuild_delay - since);
+                    return;
+                }
+            }
+        }
+        if let Some(started) = self.treemap.job_started_at {
+            let min_interval = Duration::from_secs(1) / theme::TREEMAP_MAX_REBUILD_HZ;
+            let since = started.elapsed();
+            if since < min_interval {
+                ctx.request_repaint_after(min_interval - since);
+                return;
+            }
+        }
         let Some(tree) = self.tree.clone() else {
             return;
         };
+        self.treemap.job_started_at = Some(Instant::now());
         let root = self.treemap_root;
         let generation = self.treemap.generation;
         let categorizer = self.categorizer.clone();
