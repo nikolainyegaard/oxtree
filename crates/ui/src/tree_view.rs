@@ -1,0 +1,421 @@
+//! The directory tree as a virtual list: a header row and one painted row
+//! per visible node, drawn only for the rows inside the scroll viewport.
+
+use eframe::egui::{self, Align2, Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
+use oxtree_core::{format, time, Kind};
+
+use crate::app::{Column, OxTreeApp};
+use crate::theme;
+
+struct Columns {
+    name_w: f32,
+    bar_x: f32,
+    pct_x: f32,
+    size_x: f32,
+    items_x: f32,
+    files_x: f32,
+    subdirs_x: f32,
+    mtime_x: f32,
+    right: f32,
+}
+
+fn columns(left: f32, width: f32) -> Columns {
+    let right = left + width;
+    let mtime_x = right - theme::COL_MTIME;
+    let subdirs_x = mtime_x - theme::COL_GAP - theme::COL_COUNT;
+    let files_x = subdirs_x - theme::COL_GAP - theme::COL_COUNT;
+    let items_x = files_x - theme::COL_GAP - theme::COL_COUNT;
+    let size_x = items_x - theme::COL_GAP - theme::COL_SIZE;
+    let pct_x = size_x - theme::COL_GAP - theme::COL_PERCENT_NUM;
+    let bar_x = pct_x - theme::COL_GAP - theme::PERCENT_BAR_COLUMN_WIDTH;
+    Columns {
+        name_w: (bar_x - theme::COL_GAP - left).max(80.0),
+        bar_x,
+        pct_x,
+        size_x,
+        items_x,
+        files_x,
+        subdirs_x,
+        mtime_x,
+        right,
+    }
+}
+
+pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let text_color = ui.visuals().text_color();
+    let weak = ui.visuals().weak_text_color();
+
+    // Header
+    let (header_rect, _) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width(), theme::ROW_HEIGHT),
+        Sense::hover(),
+    );
+    let cols = columns(header_rect.left() + 4.0, header_rect.width() - 8.0);
+    let painter = ui.painter_at(header_rect);
+    painter.rect_filled(header_rect, 0.0, ui.visuals().faint_bg_color);
+    let y = header_rect.center().y;
+    let headers: [(Column, f32, f32, Align2, &str); 8] = [
+        (
+            Column::Name,
+            header_rect.left() + 4.0,
+            cols.name_w,
+            Align2::LEFT_CENTER,
+            "Name",
+        ),
+        (
+            Column::PercentBar,
+            cols.bar_x,
+            theme::PERCENT_BAR_COLUMN_WIDTH,
+            Align2::LEFT_CENTER,
+            "Subtree Percentage",
+        ),
+        (
+            Column::PercentNum,
+            cols.pct_x,
+            theme::COL_PERCENT_NUM,
+            Align2::RIGHT_CENTER,
+            "%",
+        ),
+        (
+            Column::Size,
+            cols.size_x,
+            theme::COL_SIZE,
+            Align2::RIGHT_CENTER,
+            "Size",
+        ),
+        (
+            Column::Items,
+            cols.items_x,
+            theme::COL_COUNT,
+            Align2::RIGHT_CENTER,
+            "Items",
+        ),
+        (
+            Column::Files,
+            cols.files_x,
+            theme::COL_COUNT,
+            Align2::RIGHT_CENTER,
+            "Files",
+        ),
+        (
+            Column::Subdirs,
+            cols.subdirs_x,
+            theme::COL_COUNT,
+            Align2::RIGHT_CENTER,
+            "Subdirs",
+        ),
+        (
+            Column::Mtime,
+            cols.mtime_x,
+            theme::COL_MTIME,
+            Align2::RIGHT_CENTER,
+            "Last Modified",
+        ),
+    ];
+    for (col, x, w, align, label) in headers {
+        let rect = Rect::from_min_size(
+            Pos2::new(x, header_rect.top()),
+            Vec2::new(w, theme::ROW_HEIGHT),
+        );
+        let resp = ui.interact(rect, ui.id().with(("hdr", label)), Sense::click());
+        let mut text = label.to_string();
+        if app.sort.column == col {
+            text.push_str(if app.sort.ascending { " ▲" } else { " ▼" });
+        }
+        let anchor = if align == Align2::LEFT_CENTER {
+            Pos2::new(x, y)
+        } else {
+            Pos2::new(x + w, y)
+        };
+        painter.text(
+            anchor,
+            align,
+            text,
+            font.clone(),
+            if resp.hovered() { text_color } else { weak },
+        );
+        if resp.clicked() {
+            app.set_sort(col);
+        }
+    }
+
+    let total = app.rows.len();
+    let selected = app.selected;
+    let scroll_to = if app.scroll_to_selected {
+        selected.and_then(|n| app.row_index_of(n))
+    } else {
+        None
+    };
+    app.scroll_to_selected = false;
+
+    let mut clicked: Option<(u32, bool, bool)> = None; // node, toggle, double
+    let mut area = egui::ScrollArea::vertical()
+        .auto_shrink([false, false])
+        .id_salt("tree-rows");
+    if let Some(i) = scroll_to {
+        let spacing = ui.spacing().item_spacing.y;
+        let offset = i as f32 * (theme::ROW_HEIGHT + spacing) - ui.available_height() / 2.0;
+        area = area.vertical_scroll_offset(offset.max(0.0));
+    }
+    area.show_rows(ui, theme::ROW_HEIGHT, total, |ui, range| {
+        let Some(tree) = app.tree.clone() else { return };
+        let width = ui.available_width();
+        for i in range {
+            let Some(row) = app.rows.get(i).copied() else {
+                continue;
+            };
+            let (rect, resp) =
+                ui.allocate_exact_size(Vec2::new(width, theme::ROW_HEIGHT), Sense::click());
+            let cols = columns(rect.left() + 4.0, rect.width() - 8.0);
+            let painter = ui.painter_at(rect);
+            let is_selected = selected == Some(row.node);
+            if is_selected {
+                painter.rect_filled(rect, 2.0, ui.visuals().selection.bg_fill);
+            } else if resp.hovered() {
+                painter.rect_filled(rect, 2.0, ui.visuals().widgets.hovered.weak_bg_fill);
+            }
+            let kind = tree.kind(row.node);
+            let y = rect.center().y;
+            let indent = rect.left() + 4.0 + row.depth as f32 * theme::INDENT;
+
+            // Expand marker and name
+            let expandable = tree.child_count(row.node) > 0;
+            let marker_rect =
+                Rect::from_center_size(Pos2::new(indent + 6.0, y), Vec2::splat(theme::ROW_HEIGHT));
+            if expandable {
+                let open = app.expanded.contains(&row.node);
+                painter.text(
+                    Pos2::new(indent + 6.0, y),
+                    Align2::CENTER_CENTER,
+                    if open { "▾" } else { "▸" },
+                    font.clone(),
+                    text_color,
+                );
+            }
+            let name_color = match kind {
+                Kind::UnreadDir => theme::DIR_READ_ERROR,
+                Kind::MountPoint => weak,
+                _ if is_selected => ui.visuals().strong_text_color(),
+                _ => text_color,
+            };
+            let name_x = indent + 16.0;
+            let name_clip = Rect::from_min_max(
+                Pos2::new(name_x, rect.top()),
+                Pos2::new(cols.bar_x - theme::COL_GAP, rect.bottom()),
+            );
+            let name_painter = painter.with_clip_rect(name_clip);
+            let shown = if row.node == tree.root() {
+                tree.root_path().to_string()
+            } else {
+                tree.name(row.node).to_string()
+            };
+            name_painter.text(
+                Pos2::new(name_x, y),
+                Align2::LEFT_CENTER,
+                shown,
+                font.clone(),
+                name_color,
+            );
+
+            // Percent bar
+            let bar_rect = Rect::from_min_max(
+                Pos2::new(cols.bar_x, rect.top() + 3.0),
+                Pos2::new(
+                    cols.bar_x + theme::PERCENT_BAR_COLUMN_WIDTH,
+                    rect.bottom() - 3.0,
+                ),
+            );
+            match kind {
+                Kind::UnreadDir => {
+                    painter.text(
+                        Pos2::new(cols.bar_x + 4.0, y),
+                        Align2::LEFT_CENTER,
+                        "[Not Read]",
+                        font.clone(),
+                        theme::DIR_READ_ERROR,
+                    );
+                }
+                Kind::MountPoint => {
+                    painter.text(
+                        Pos2::new(cols.bar_x + 4.0, y),
+                        Align2::LEFT_CENTER,
+                        "[Mount Point]",
+                        font.clone(),
+                        weak,
+                    );
+                }
+                _ => {
+                    if let Some(p) = tree.percent(row.node) {
+                        painter.rect_filled(bar_rect, 0.0, theme::PERCENT_BAR_BACKGROUND);
+                        let fill = Rect::from_min_size(
+                            bar_rect.min,
+                            Vec2::new(
+                                bar_rect.width() * (p as f32 / 100.0).clamp(0.0, 1.0),
+                                bar_rect.height(),
+                            ),
+                        );
+                        painter.rect_filled(
+                            fill,
+                            0.0,
+                            theme::percent_bar_color(row.depth.saturating_sub(1)),
+                        );
+                        painter.rect_stroke(
+                            bar_rect,
+                            0.0,
+                            Stroke::new(1.0, Color32::from_gray(0x60)),
+                            egui::StrokeKind::Inside,
+                        );
+                        painter.text(
+                            Pos2::new(cols.pct_x + theme::COL_PERCENT_NUM, y),
+                            Align2::RIGHT_CENTER,
+                            format::percent(p),
+                            font.clone(),
+                            text_color,
+                        );
+                    }
+                }
+            }
+
+            // Numbers
+            painter.text(
+                Pos2::new(cols.size_x + theme::COL_SIZE, y),
+                Align2::RIGHT_CENTER,
+                format::size(tree.size(row.node)),
+                font.clone(),
+                text_color,
+            );
+            if tree.is_dir_like(row.node) && kind != Kind::DotEntry {
+                painter.text(
+                    Pos2::new(cols.items_x + theme::COL_COUNT, y),
+                    Align2::RIGHT_CENTER,
+                    format::grouped(tree.total_items(row.node) as u64),
+                    font.clone(),
+                    text_color,
+                );
+                painter.text(
+                    Pos2::new(cols.files_x + theme::COL_COUNT, y),
+                    Align2::RIGHT_CENTER,
+                    format::grouped(tree.total_files(row.node) as u64),
+                    font.clone(),
+                    text_color,
+                );
+                painter.text(
+                    Pos2::new(cols.subdirs_x + theme::COL_COUNT, y),
+                    Align2::RIGHT_CENTER,
+                    format::grouped(tree.total_subdirs(row.node) as u64),
+                    font.clone(),
+                    text_color,
+                );
+            } else if kind == Kind::DotEntry {
+                painter.text(
+                    Pos2::new(cols.items_x + theme::COL_COUNT, y),
+                    Align2::RIGHT_CENTER,
+                    format::grouped(tree.total_items(row.node) as u64),
+                    font.clone(),
+                    text_color,
+                );
+            }
+            painter.text(
+                Pos2::new(cols.right, y),
+                Align2::RIGHT_CENTER,
+                time::format(tree.mtime(row.node), app.utc_offset),
+                font.clone(),
+                text_color,
+            );
+
+            if resp.double_clicked() {
+                clicked = Some((row.node, false, true));
+            } else if resp.clicked() {
+                let on_marker = resp
+                    .interact_pointer_pos()
+                    .map(|p| marker_rect.contains(p))
+                    .unwrap_or(false);
+                clicked = Some((row.node, on_marker && expandable, false));
+            }
+        }
+    });
+
+    if let Some((node, toggle, double)) = clicked {
+        if toggle {
+            app.toggle_expand(node);
+        } else {
+            app.select(node, false);
+            if double
+                && app
+                    .tree
+                    .as_ref()
+                    .map(|t| t.child_count(node) > 0)
+                    .unwrap_or(false)
+            {
+                app.toggle_expand(node);
+            }
+        }
+    }
+}
+
+/// Arrow keys, Enter and Backspace move the selection when no text field
+/// has focus.
+pub fn handle_keys(app: &mut OxTreeApp, ctx: &egui::Context) {
+    if ctx.memory(|m| m.focused().is_some()) || app.tree.is_none() {
+        return;
+    }
+    let (up, down, left, right, home, end, enter) = ctx.input(|i| {
+        (
+            i.key_pressed(egui::Key::ArrowUp),
+            i.key_pressed(egui::Key::ArrowDown),
+            i.key_pressed(egui::Key::ArrowLeft),
+            i.key_pressed(egui::Key::ArrowRight),
+            i.key_pressed(egui::Key::Home),
+            i.key_pressed(egui::Key::End),
+            i.key_pressed(egui::Key::Enter),
+        )
+    });
+    if !(up || down || left || right || home || end || enter) {
+        return;
+    }
+    let Some(sel) = app.selected else {
+        if let Some(r) = app.rows.first() {
+            app.select(r.node, false);
+        }
+        return;
+    };
+    let Some(idx) = app.row_index_of(sel) else {
+        return;
+    };
+    let expanded = app.expanded.contains(&sel);
+    let has_children = app
+        .tree
+        .as_ref()
+        .map(|t| t.child_count(sel) > 0)
+        .unwrap_or(false);
+    let parent = app.tree.as_ref().and_then(|t| t.parent(sel));
+    let mut target = None;
+    if up && idx > 0 {
+        target = app.rows.get(idx - 1).map(|r| r.node);
+    } else if down {
+        target = app.rows.get(idx + 1).map(|r| r.node);
+    } else if home {
+        target = app.rows.first().map(|r| r.node);
+    } else if end {
+        target = app.rows.last().map(|r| r.node);
+    } else if right && has_children {
+        if expanded {
+            target = app.rows.get(idx + 1).map(|r| r.node);
+        } else {
+            app.set_expanded(sel, true);
+        }
+    } else if left {
+        if expanded && has_children {
+            app.set_expanded(sel, false);
+        } else {
+            target = parent;
+        }
+    } else if enter && has_children {
+        app.toggle_expand(sel);
+    }
+    if let Some(t) = target {
+        app.select(t, false);
+        app.scroll_to_selected = true;
+    }
+}

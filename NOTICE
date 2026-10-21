@@ -1,0 +1,24 @@
+OxTree
+Copyright (C) 2026 Nikolai Nyegaard
+
+Licensed under the GNU General Public License, version 2 (see LICENSE).
+
+OxTree reimplements behaviour first written for QDirStat,
+Copyright (C) 2015-2025 Stefan Hundhammer <Stefan.Hundhammer@gmx.de>,
+also licensed under the GNU General Public License, version 2.
+No source files were copied; the following were carried over closely
+enough to count as derived work:
+
+- The squarified treemap layout and the cushion shading polynomial with
+  QDirStat's constants (minimum tile size, ambient light, light vector,
+  the ridge coefficient table), in crates/core/src/layout.rs and
+  crates/core/src/cushion.rs. QDirStat in turn follows Bruls, Huizing
+  and van Wijk, "Squarified Treemaps" (2000), and van Wijk and van de
+  Wetering, "Cushion Treemaps" (1999).
+- The default file category table (names, colours, suffixes and
+  patterns), in crates/core/src/mime.rs.
+- The standard cleanup actions, their placeholders and the configuration
+  keys, in crates/core/src/cleanup.rs.
+- The cache file format, versions 1.0 and 2.0, in crates/core/src/cache.rs.
+- The default colours of the treemap and the percent bars, in
+  crates/ui/src/theme.rs.

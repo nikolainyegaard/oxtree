@@ -1,0 +1,64 @@
+//! QDirStat's default colours and sizes as named tokens. Views use these
+//! names and never a literal colour.
+
+use eframe::egui::Color32;
+use std::time::Duration;
+
+/// `[Treemaps] SelectedItemsColor`
+pub const SELECTED_ITEMS: Color32 = Color32::from_rgb(0xff, 0xff, 0x00);
+/// `[Treemaps] CurrentItemColor`
+pub const CURRENT_ITEM: Color32 = Color32::from_rgb(0xff, 0x00, 0x00);
+/// `[Treemaps] FileFillColor`: files without a category.
+pub const FILE_FILL: [u8; 3] = [0xde, 0x8d, 0x53];
+/// `[Treemaps] MinTileSize`
+pub const MIN_TILE_SIZE: f64 = 3.0;
+/// Below this many points on a side the treemap is not rebuilt, QDirStat's
+/// way of letting the user shrink it to skip the cost.
+pub const TREEMAP_UPDATE_MIN_SIZE: f32 = 20.0;
+
+/// `[PercentBar] Background`
+pub const PERCENT_BAR_BACKGROUND: Color32 = Color32::from_rgb(0xa0, 0xa0, 0xa0);
+/// `[PercentBar] Colors`, by tree depth.
+pub const PERCENT_BAR_COLORS: [Color32; 12] = [
+    Color32::from_rgb(0x00, 0x00, 0xff),
+    Color32::from_rgb(0x80, 0x00, 0x80),
+    Color32::from_rgb(0xe7, 0x93, 0x2b),
+    Color32::from_rgb(0x04, 0x71, 0x00),
+    Color32::from_rgb(0xb0, 0x00, 0x00),
+    Color32::from_rgb(0xcc, 0xbb, 0x00),
+    Color32::from_rgb(0xa2, 0x62, 0x1e),
+    Color32::from_rgb(0x00, 0x94, 0x92),
+    Color32::from_rgb(0xd9, 0x5e, 0x00),
+    Color32::from_rgb(0x00, 0xc2, 0x41),
+    Color32::from_rgb(0xc2, 0x6c, 0xbb),
+    Color32::from_rgb(0x00, 0xb3, 0xff),
+];
+/// `[PercentBar] PercentBarColumnWidth`
+pub const PERCENT_BAR_COLUMN_WIDTH: f32 = 180.0;
+
+/// `DirReadErrColor`: name colour of a directory that could not be read.
+pub const DIR_READ_ERROR: Color32 = Color32::from_rgb(0xff, 0x00, 0x00);
+/// `SubtreeReadErrColor`
+pub const SUBTREE_READ_ERROR: Color32 = Color32::from_rgb(0xff, 0xff, 0x00);
+
+/// `StatusBarTimeoutMillisec`
+pub const STATUS_TIMEOUT: Duration = Duration::from_millis(3000);
+
+pub const ROW_HEIGHT: f32 = 20.0;
+pub const INDENT: f32 = 18.0;
+pub const COL_PERCENT_NUM: f32 = 56.0;
+pub const COL_SIZE: f32 = 84.0;
+pub const COL_COUNT: f32 = 72.0;
+pub const COL_MTIME: f32 = 124.0;
+pub const COL_GAP: f32 = 8.0;
+
+pub fn percent_bar_color(depth: u32) -> Color32 {
+    PERCENT_BAR_COLORS
+        .get(depth as usize % PERCENT_BAR_COLORS.len())
+        .copied()
+        .unwrap_or(PERCENT_BAR_BACKGROUND)
+}
+
+pub fn rgb(c: [u8; 3]) -> Color32 {
+    Color32::from_rgb(c[0], c[1], c[2])
+}

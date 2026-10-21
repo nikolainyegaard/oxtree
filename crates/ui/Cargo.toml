@@ -1,0 +1,14 @@
+[package]
+name = "oxtree-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+eframe.workspace = true
+oxtree-core.workspace = true
+oxtree-native.workspace = true
+
+[lints]
+workspace = true
