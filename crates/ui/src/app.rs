@@ -79,6 +79,13 @@ pub struct OutputWindow {
     pub policy: OutputPolicy,
 }
 
+/// View state remembered across a rescan, by path because node ids change.
+pub struct ViewMemory {
+    pub selected: Option<String>,
+    pub expanded: Vec<String>,
+    pub treemap_root: String,
+}
+
 pub struct PendingCleanup {
     pub index: usize,
     pub node: NodeId,
@@ -103,6 +110,8 @@ pub struct OxTreeApp {
     pub rows: Vec<Row>,
     pub rows_dirty: bool,
     pub scroll_to_selected: bool,
+    /// Set by a refresh; applied when the new tree lands.
+    pub view_memory: Option<ViewMemory>,
     pub sort: Sort,
 
     pub treemap_root: NodeId,
@@ -177,6 +186,7 @@ impl OxTreeApp {
             rows: Vec::new(),
             rows_dirty: true,
             scroll_to_selected: false,
+            view_memory: None,
             sort: Sort {
                 column: Column::Size,
                 ascending: false,
@@ -255,9 +265,6 @@ impl OxTreeApp {
     // ------------------------------------------------------------ scanning
 
     pub fn open_directory(&mut self, path: PathBuf) {
-        if let Some(s) = self.scan.take() {
-            s.cancel();
-        }
         self.tree = None;
         self.selected = None;
         self.expanded.clear();
@@ -265,6 +272,31 @@ impl OxTreeApp {
         self.rows_dirty = true;
         self.treemap = TreemapState::default();
         self.treemap_root = 0;
+        self.view_memory = None;
+        self.start_scan(path);
+    }
+
+    /// Rescan the current directory without touching what is on screen.
+    /// The old tree stays until the new one lands; the selection, the
+    /// expanded directories and the treemap zoom carry over by path.
+    pub fn refresh_all(&mut self) {
+        let Some(p) = self.scan_path.clone() else {
+            return;
+        };
+        if let Some(tree) = &self.tree {
+            self.view_memory = Some(ViewMemory {
+                selected: self.selected.map(|n| tree.path(n)),
+                expanded: self.expanded.iter().map(|&n| tree.path(n)).collect(),
+                treemap_root: tree.path(self.treemap_root),
+            });
+        }
+        self.start_scan(p);
+    }
+
+    fn start_scan(&mut self, path: PathBuf) {
+        if let Some(s) = self.scan.take() {
+            s.cancel();
+        }
         self.progress = (0, 0, 0);
         self.last_elapsed = None;
         self.scan_started = Instant::now();
@@ -277,12 +309,6 @@ impl OxTreeApp {
             },
         ));
         self.scan_path = Some(path);
-    }
-
-    pub fn refresh_all(&mut self) {
-        if let Some(p) = self.scan_path.clone() {
-            self.open_directory(p);
-        }
     }
 
     pub fn stop_reading(&mut self) {
@@ -318,12 +344,29 @@ impl OxTreeApp {
     fn install_tree(&mut self, tree: Tree, elapsed: Option<Duration>, unreadable: usize) {
         self.scan = None;
         let root = tree.root();
-        self.tree = Some(Arc::new(tree));
         self.expanded.clear();
         self.expanded.insert(root);
-        self.selected = Some(root);
-        self.treemap_root = root;
-        self.treemap = TreemapState::default();
+        match self.view_memory.take() {
+            Some(m) => {
+                for p in &m.expanded {
+                    if let Some(n) = tree.find(p) {
+                        self.expanded.insert(n);
+                    }
+                }
+                self.selected = Some(m.selected.map(|p| tree.find_nearest(&p)).unwrap_or(root));
+                self.treemap_root = tree.find(&m.treemap_root).unwrap_or(root);
+                // Keep the old texture on screen until the new render lands;
+                // the tiles belong to the old ids, so drop those.
+                self.treemap.tiles = Arc::new(Vec::new());
+                self.treemap.generation += 1;
+            }
+            None => {
+                self.selected = Some(root);
+                self.treemap_root = root;
+                self.treemap = TreemapState::default();
+            }
+        }
+        self.tree = Some(Arc::new(tree));
         self.rows_dirty = true;
         self.last_elapsed = elapsed;
         self.unreadable = unreadable;
@@ -369,6 +412,7 @@ impl OxTreeApp {
                 }
                 Some(Err(e)) => {
                     self.scan = None;
+                    self.view_memory = None;
                     self.show_error(e);
                 }
                 None => {

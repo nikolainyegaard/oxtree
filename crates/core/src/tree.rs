@@ -429,6 +429,47 @@ impl Tree {
         out
     }
 
+    /// The node for a full path as `path()` produces it, or `None`. Used to
+    /// carry view state across a rescan, where every node id changes.
+    pub fn find(&self, path: &str) -> Option<NodeId> {
+        let rest = path.strip_prefix(self.root_path.as_str())?;
+        let mut cur: NodeId = 0;
+        for part in rest.split('/').filter(|p| !p.is_empty()) {
+            cur = self.child_named(cur, part)?;
+        }
+        Some(cur)
+    }
+
+    /// The nearest node on the path that still exists: the node itself,
+    /// else its parent, and so on up to the root.
+    pub fn find_nearest(&self, path: &str) -> NodeId {
+        let mut p = path;
+        loop {
+            if let Some(n) = self.find(p) {
+                return n;
+            }
+            match p.rfind('/') {
+                Some(i) if i > 0 => p = p.get(..i).unwrap_or(""),
+                _ => return 0,
+            }
+        }
+    }
+
+    /// A direct child by name, looking inside the `<Files>` dot entry too
+    /// since paths skip it.
+    fn child_named(&self, dir: NodeId, name: &str) -> Option<NodeId> {
+        let mut dot = None;
+        for c in self.children(dir) {
+            if self.kind(c) == Kind::DotEntry {
+                dot = Some(c);
+            } else if self.name(c) == name {
+                return Some(c);
+            }
+        }
+        let dot = dot?;
+        self.children(dot).find(|&c| self.name(c) == name)
+    }
+
     /// The directory a cleanup runs in: the node itself for directories, the
     /// parent directory otherwise.
     pub fn dir_path(&self, n: NodeId) -> String {
@@ -525,6 +566,24 @@ mod tests {
             },
         ];
         Tree::build("/root".into(), dirs).unwrap()
+    }
+
+    #[test]
+    fn find_by_path_round_trips_and_falls_back_to_the_nearest_ancestor() {
+        let t = sample();
+        for n in 0..t.len() as NodeId {
+            if t.kind(n) != Kind::DotEntry {
+                assert_eq!(t.find(&t.path(n)), Some(n), "{}", t.path(n));
+            }
+        }
+        assert_eq!(t.find("/root"), Some(0));
+        assert_eq!(t.find("/root/a.txt").map(|n| t.name(n)), Some("a.txt"));
+        assert_eq!(t.find("/root/sub/zzz"), None);
+        assert_eq!(t.find("/elsewhere"), None);
+        let sub = t.find("/root/sub").unwrap();
+        assert_eq!(t.find_nearest("/root/sub/zzz/deeper"), sub);
+        assert_eq!(t.find_nearest("/root/gone"), 0);
+        assert_eq!(t.find_nearest("/elsewhere"), 0);
     }
 
     #[test]
