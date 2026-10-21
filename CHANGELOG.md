@@ -19,5 +19,5 @@ uses [Semantic Versioning](https://semver.org/).
 - Reading and writing QDirStat cache files, plain or gzipped
 - Headless benchmark and screenshot modes for development
 
-[Unreleased]: https://github.com/nikolainyegaard/OxTree/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/nikolainyegaard/OxTree/releases/tag/v0.1.0
+[Unreleased]: https://github.com/nikolainyegaard/oxtree/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/nikolainyegaard/oxtree/releases/tag/v0.1.0

@@ -209,7 +209,7 @@ fn about(app: &mut OxTreeApp, ctx: &Context) {
         ui.label("Licensed under the GNU General Public License version 2.");
         ui.label("The treemap algorithm, colour defaults, cleanup actions and cache file format come from QDirStat by Stefan Hundhammer.");
         ui.add_space(6.0);
-        ui.hyperlink("https://github.com/nikolainyegaard/OxTree");
+        ui.hyperlink("https://github.com/nikolainyegaard/oxtree");
         ui.add_space(8.0);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.button("Close").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {

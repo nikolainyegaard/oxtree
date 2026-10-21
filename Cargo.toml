@@ -6,7 +6,7 @@ members = ["crates/core", "crates/native", "crates/ui", "apps/oxtree"]
 version = "0.1.0"
 edition = "2021"
 license = "GPL-2.0-only"
-repository = "https://github.com/nikolainyegaard/OxTree"
+repository = "https://github.com/nikolainyegaard/oxtree"
 
 [workspace.dependencies]
 eframe = { version = "0.36.2", default-features = false, features = ["glow", "wayland", "x11", "default_fonts"] }
