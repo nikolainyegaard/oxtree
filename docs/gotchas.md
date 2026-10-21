@@ -17,6 +17,10 @@ Dated notes on things that look wrong until you know why, and on dead ends. Add 
 - **Clippy's `indexing_slicing` is denied workspace-wide.** The arena uses `get()` everywhere and the pixel loops use `as_chunks_mut::<4>()`. The bounds checks cost the same as the ones `[]` would do; the difference is that a bad index returns a default instead of aborting the app.
 - **The release profile uses `panic = "abort"`.** With every panic path denied by clippy there is nothing to unwind, and abort keeps the binary smaller.
 
+## Pinned for the settings work
+
+- **Treemap rebuild delay as a preference.** The settle delay (`OxTreeApp::rebuild_delay`, read from `OXTREE_REBUILD_DELAY_MS`, default 0) stays in the code so that it becomes a setting once a settings file and a Preferences dialog exist. Proposed key: `[Treemaps] RebuildDelayMillisec`, default 0, with 200 as the QDirStat-like value for slow or battery-powered machines. The environment variable goes away at that point. The 120 Hz cap is not a preference; it stays a constant.
+
 ## Dead ends from the spike (2026-10-21)
 
 - io_uring batched statx: slower on a warm cache in every published measurement, because the kernel hands statx to io-wq threads.
