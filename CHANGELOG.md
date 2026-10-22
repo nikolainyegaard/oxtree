@@ -6,6 +6,14 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Cancel in the Open Directory dialog closes it even when nothing has been scanned yet, leaving an empty window
+
+### Changed
+
+- Launched without a directory, OxTree scans the home directory at once instead of asking; Preferences, At launch chooses between the home directory, asking, or a directory of your own
+
 ## [0.1.0] - 2026-10-22
 
 The first release.

@@ -17,7 +17,7 @@ use oxtree_core::flat::{flat_list_filtered, FlatSort};
 use oxtree_core::layout::Tile;
 use oxtree_core::mime::Categorizer;
 use oxtree_core::query::{Item, Query};
-use oxtree_core::settings::{Settings, Theme};
+use oxtree_core::settings::{Settings, StartIn, Theme};
 use oxtree_core::types::TypeRow;
 use oxtree_core::{format, Kind, NodeId, Tree, NO_NODE};
 use oxtree_native::run::RunEvent;
@@ -295,6 +295,8 @@ pub struct OxTreeApp {
     /// CrossFilesystems`, on by default.
     pub cross_filesystems: bool,
     /// Settings that are not state of a view: see `settings.rs` for the keys.
+    pub start_in: StartIn,
+    pub start_path: String,
     pub row_height: f32,
     pub theme: Theme,
     pub size_decimals: u8,
@@ -461,6 +463,8 @@ impl OxTreeApp {
             shading: Shading::default(),
             threads,
             cross_filesystems: true,
+            start_in: StartIn::Home,
+            start_path: String::new(),
             row_height: theme::ROW_HEIGHT,
             theme: Theme::System,
             size_decimals: 1,
@@ -497,12 +501,21 @@ impl OxTreeApp {
         if let Some(n) = note {
             app.set_status(n, false);
         }
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());
         if let Some(c) = cache {
             app.read_cache(c);
         } else if let Some(p) = start {
             app.open_directory(p);
         } else {
-            app.open_dir_text = Some(std::env::var("HOME").unwrap_or_else(|_| "/".into()));
+            // No directory given: the launch setting decides. The scan
+            // starts before the first frame, so the content is the first
+            // thing on screen.
+            let custom = app.start_path.trim().to_string();
+            match app.start_in {
+                StartIn::Ask => app.open_dir_text = Some(home),
+                StartIn::Custom if !custom.is_empty() => app.open_directory(PathBuf::from(custom)),
+                StartIn::Home | StartIn::Custom => app.open_directory(PathBuf::from(home)),
+            }
         }
         app
     }
@@ -513,6 +526,8 @@ impl OxTreeApp {
     /// taken only when the count matches, so an old file after a column
     /// was added keeps the defaults.
     pub fn apply_settings(&mut self, s: &Settings) {
+        self.start_in = s.start_in;
+        self.start_path = s.start_path.clone();
         self.cross_filesystems = s.cross_filesystems;
         self.rebuild_delay = Duration::from_millis(s.rebuild_delay_ms);
         self.show_tile_names = s.tile_names;
@@ -544,6 +559,8 @@ impl OxTreeApp {
 
     pub fn to_settings(&self) -> Settings {
         Settings {
+            start_in: self.start_in,
+            start_path: self.start_path.clone(),
             cross_filesystems: self.cross_filesystems,
             rebuild_delay_ms: self.rebuild_delay.as_millis() as u64,
             tile_names: self.show_tile_names,

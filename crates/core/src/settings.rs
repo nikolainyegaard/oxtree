@@ -14,8 +14,20 @@ pub enum Theme {
     Dark,
 }
 
+/// What a launch without a directory argument opens.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum StartIn {
+    #[default]
+    Home,
+    Ask,
+    Custom,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Settings {
+    /// `[General] StartIn`: home, ask or custom, and `StartPath` for custom
+    pub start_in: StartIn,
+    pub start_path: String,
     /// `[DirectoryTree] CrossFilesystems`
     pub cross_filesystems: bool,
     /// `[Treemaps] RebuildDelayMillisec`
@@ -55,6 +67,8 @@ pub const HISTORY_MAX: usize = 10;
 impl Default for Settings {
     fn default() -> Self {
         Settings {
+            start_in: StartIn::Home,
+            start_path: String::new(),
             cross_filesystems: true,
             rebuild_delay_ms: 0,
             tile_names: true,
@@ -140,6 +154,12 @@ impl Settings {
             .collect();
         history.dedup();
         Settings {
+            start_in: match ini.get("General", "StartIn") {
+                Some("ask") => StartIn::Ask,
+                Some("custom") => StartIn::Custom,
+                _ => StartIn::Home,
+            },
+            start_path: ini.get("General", "StartPath").unwrap_or("").to_string(),
             cross_filesystems: flag(
                 ini,
                 "DirectoryTree",
@@ -180,7 +200,19 @@ impl Settings {
         let mut ini = Ini::default();
         ini.add(
             "General",
-            &[("SizeDecimals", self.size_decimals.to_string())],
+            &[
+                (
+                    "StartIn",
+                    match self.start_in {
+                        StartIn::Home => "home",
+                        StartIn::Ask => "ask",
+                        StartIn::Custom => "custom",
+                    }
+                    .to_string(),
+                ),
+                ("StartPath", self.start_path.clone()),
+                ("SizeDecimals", self.size_decimals.to_string()),
+            ],
         );
         let mut main = vec![
             ("ShowTreemap", self.show_treemap.to_string()),
@@ -292,6 +324,8 @@ mod tests {
     #[test]
     fn roundtrip_and_defaults_for_garbage() {
         let mut s = Settings {
+            start_in: StartIn::Custom,
+            start_path: "/srv/data".into(),
             cross_filesystems: false,
             rebuild_delay_ms: 200,
             tile_names: false,
@@ -337,6 +371,7 @@ mod tests {
         assert_eq!(s.theme, Theme::System);
         assert_eq!(s.check_interval_days, 7);
         assert_eq!(Settings::from_ini(&Ini::default()), Settings::default());
+        assert_eq!(Settings::default().start_in, StartIn::Home);
     }
 
     #[test]

@@ -37,6 +37,31 @@ fn preferences(app: &mut OxTreeApp, ctx: &Context) {
             .num_columns(2)
             .spacing([16.0, 8.0])
             .show(ui, |ui| {
+                ui.label(egui::RichText::new("At launch").strong());
+                ui.vertical(|ui| {
+                    use oxtree_core::settings::StartIn;
+                    ui.horizontal(|ui| {
+                        ui.radio_value(&mut app.start_in, StartIn::Home, "Scan the home directory");
+                        ui.radio_value(&mut app.start_in, StartIn::Ask, "Ask for a directory");
+                    });
+                    ui.horizontal(|ui| {
+                        ui.radio_value(&mut app.start_in, StartIn::Custom, "Scan this directory:");
+                        if ui
+                            .add(
+                                egui::TextEdit::singleline(&mut app.start_path)
+                                    .hint_text("/srv/data")
+                                    .desired_width(260.0),
+                            )
+                            .changed()
+                        {
+                            app.start_in = StartIn::Custom;
+                        }
+                    });
+                })
+                .response
+                .on_hover_text("What opens when OxTree starts without a directory on the command line");
+                ui.end_row();
+
                 ui.label(egui::RichText::new("Scanning").strong());
                 ui.checkbox(
                     &mut app.cross_filesystems,
@@ -314,7 +339,9 @@ fn open_directory(app: &mut OxTreeApp, ctx: &Context) {
         app.open_dir_text = None;
         app.volumes = None;
         app.open_directory(PathBuf::from(expanded));
-    } else if close && (app.tree.is_some() || app.scan.is_some()) {
+    } else if close {
+        // Cancel always closes the dialog; with nothing scanned yet that
+        // leaves an empty window, and Ctrl+O brings the dialog back.
         app.open_dir_text = None;
         app.volumes = None;
     }

@@ -33,7 +33,7 @@ oxtree /usr --export usr.csv --max-depth 2
 
 The last form scans without a window and writes WizTree's CSV columns (`--tsv`, `--utc`, `--percent`, `--search QUERY` to filter, `-` for stdout).
 
-Without arguments a dialog asks for the directory. It lists every mounted local filesystem with its size, used and free space and a Scan button, and the Browse button uses `kdialog` or `zenity` when one is installed. A scan crosses into other local filesystems by default, so a scan of `/` covers the machine; kernel tables, network mounts and removable media under `/run` stay out. The checkbox in the dialog turns crossing off, which is the view to use when the question is which filesystem is full. Directories you cannot read are listed as `[Not Read]`; File, Rescan as Root replaces the window with OxTree running as root on the same directory, asking for your password through polkit.
+Without arguments OxTree scans your home directory straight away; Preferences can make it ask for a directory instead, or scan one of your choosing. The Open Directory dialog (Ctrl+O) lists every mounted local filesystem with its size, used and free space and a Scan button, and the Browse button uses `kdialog` or `zenity` when one is installed. A scan crosses into other local filesystems by default, so a scan of `/` covers the machine; kernel tables, network mounts and removable media under `/run` stay out. The checkbox in the dialog turns crossing off, which is the view to use when the question is which filesystem is full. Directories you cannot read are listed as `[Not Read]`; File, Rescan as Root replaces the window with OxTree running as root on the same directory, asking for your password through polkit.
 
 | Key | Action |
 |-----|--------|

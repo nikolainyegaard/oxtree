@@ -36,7 +36,7 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 |---|---|---|---|
 | Read the NTFS Master File Table directly | N/A | Linux has no MFT; ext4 inodes carry no names, btrfs tree search needs root. Recorded as a dead end in gotchas.md | Nothing; the parallel walk is the Linux answer and scans /usr in about 110 ms |
 | Multi-threaded directory scan (the WizTreeMac path) | Done | One worker per core over a shared queue, stat relative to the directory handle | |
-| Scan a whole drive or a single folder | Done | Any directory from the command line or Open Directory | |
+| Scan a whole drive or a single folder | Done | Any directory from the command line or Open Directory; without an argument the home directory, a chosen directory, or the dialog, by the launch setting | |
 | Scan several drives or folders at once, custom folder list | Missing | One root per window | A virtual root with several children in the arena; Open Directory taking several paths |
 | Scan network drives and non-NTFS volumes | Partial | Any mounted filesystem can be the root; crossing into network mounts during a scan is refused by the mount rules | Nothing to change unless someone asks to cross into NFS |
 | Cross into other local filesystems during a scan | Done | On by default, as `du` and `ncdu` do; kernel tables and network mounts stay leaves, and removable media under /run with them. Checkbox in Open Directory and in Preferences, saved. Entered mount points keep a disk badge on their folder icon and show their filesystem in the details panel | |
