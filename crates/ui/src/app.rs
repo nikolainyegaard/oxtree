@@ -159,6 +159,9 @@ pub struct OxTreeApp {
     pub progress: (usize, usize, u64),
     pub last_elapsed: Option<Duration>,
     pub unreadable: usize,
+    /// Directories with an unreadable directory somewhere below them,
+    /// shown in the subtree error colour as QDirStat does.
+    pub subtree_errors: HashSet<NodeId>,
 
     pub selected: Option<NodeId>,
     pub expanded: HashSet<NodeId>,
@@ -241,6 +244,7 @@ impl OxTreeApp {
             progress: (0, 0, 0),
             last_elapsed: None,
             unreadable: 0,
+            subtree_errors: HashSet::new(),
             selected: None,
             expanded: HashSet::new(),
             rows: Vec::new(),
@@ -434,6 +438,18 @@ impl OxTreeApp {
                 self.selected = Some(root);
                 self.treemap_root = root;
                 self.treemap = TreemapState::default();
+            }
+        }
+        self.subtree_errors.clear();
+        for n in 0..tree.len() as NodeId {
+            if tree.kind(n) == Kind::UnreadDir {
+                let mut p = tree.parent(n);
+                while let Some(a) = p {
+                    if !self.subtree_errors.insert(a) {
+                        break;
+                    }
+                    p = tree.parent(a);
+                }
             }
         }
         self.tree = Some(Arc::new(tree));

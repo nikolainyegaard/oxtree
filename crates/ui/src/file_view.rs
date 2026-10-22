@@ -111,7 +111,7 @@ fn columns(left: f32, width: f32) -> Columns {
 pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
     app.request_file_view(ui.ctx());
     let font = egui::TextStyle::Body.resolve(ui.style());
-    let text_color = ui.visuals().text_color();
+    let text_color = ui.visuals().strong_text_color();
     let weak = ui.visuals().weak_text_color();
 
     // Header

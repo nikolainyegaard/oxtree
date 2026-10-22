@@ -8,6 +8,7 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Tree icons per kind: folder, file, symlink, mount point, unreadable folder and the `<Files>` entry, painted rather than shipped as images; directories with an unreadable directory below them are shown in yellow as in QDirStat
 - Search in the File View with WizTree's syntax: substrings and `*`/`?` globs, `|` for OR, `!` for NOT, quotes, size, date, time, name and path length comparisons, `=folder` and `=file`, `/regex`; Name or Path matching, highlighted matches, Ctrl+F; `--search QUERY` on the command line
 - File View: every file in one flat list, largest first, with a Show cap of 1 000, 10 000, 100 000 or All and a Folders toggle; Ctrl+1 and Ctrl+2 switch views, double click or Enter jumps to the item in the tree; `--files` starts in it
 - Right-click menu on tree rows and treemap tiles
@@ -19,6 +20,8 @@ uses [Semantic Versioning](https://semver.org/).
 - eframe 0.37: on Wayland, frames are paced by the compositor's frame callbacks instead of a blocking swap, and the app keeps running while the compositor withholds frames (locked screen, covered window)
 
 ### Fixed
+
+- Row text in the tree and file views uses the strong text colour; egui's default label grey was never a choice
 
 - Clicking a file in the treemap jumps to it in the tree even when its directory was collapsed; the tree rows were rebuilt a frame too late
 - Paste into text fields: the eframe clipboard feature was off, so Ctrl+V had nothing to read

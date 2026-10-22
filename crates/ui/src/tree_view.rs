@@ -43,7 +43,9 @@ fn columns(left: f32, width: f32) -> Columns {
 
 pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
     let font = egui::TextStyle::Body.resolve(ui.style());
-    let text_color = ui.visuals().text_color();
+    // egui's plain label colour is a mid grey meant for non-interactive
+    // text; rows are the content here, so they get the strong colour.
+    let text_color = ui.visuals().strong_text_color();
     let weak = ui.visuals().weak_text_color();
 
     // Header
@@ -227,10 +229,16 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
             let name_color = match kind {
                 Kind::UnreadDir => theme::DIR_READ_ERROR,
                 Kind::MountPoint => weak,
-                _ if is_selected => ui.visuals().strong_text_color(),
+                _ if app.subtree_errors.contains(&row.node) => theme::SUBTREE_READ_ERROR,
                 _ => text_color,
             };
-            let name_x = indent + 16.0;
+            let icon_x = indent + 16.0;
+            icon(
+                &painter,
+                Pos2::new(icon_x + theme::ICON_SIZE / 2.0, y),
+                kind,
+            );
+            let name_x = icon_x + theme::ICON_SIZE + 5.0;
             let name_clip = Rect::from_min_max(
                 Pos2::new(name_x, rect.top()),
                 Pos2::new(cols.bar_x - theme::COL_GAP, rect.bottom()),
@@ -417,6 +425,73 @@ fn triangle(painter: &egui::Painter, center: Pos2, r: f32, dir: Dir, color: Colo
         ],
     };
     painter.add(egui::Shape::convex_polygon(points, color, Stroke::NONE));
+}
+
+/// A small painted icon per node kind, in the spirit of QDirStat's tree
+/// icons: an orange folder, a white page, a page with an arrow for a
+/// symlink, a disk for a mount point, a red-edged folder for one that could
+/// not be read, a lighter folder for the `<Files>` entry.
+pub fn icon(painter: &egui::Painter, center: Pos2, kind: Kind) {
+    let s = theme::ICON_SIZE;
+    let r = Rect::from_center_size(center, Vec2::new(s, s * 0.8));
+    match kind {
+        Kind::Dir | Kind::DotEntry | Kind::UnreadDir => {
+            let (body, tab) = if kind == Kind::DotEntry {
+                (
+                    theme::ICON_DIR.gamma_multiply(0.6),
+                    theme::ICON_DIR_TAB.gamma_multiply(0.6),
+                )
+            } else {
+                (theme::ICON_DIR, theme::ICON_DIR_TAB)
+            };
+            let tab_rect = Rect::from_min_size(r.min, Vec2::new(s * 0.45, s * 0.25));
+            painter.rect_filled(tab_rect, 1.0, tab);
+            let body_rect = Rect::from_min_max(Pos2::new(r.min.x, r.min.y + s * 0.18), r.max);
+            painter.rect_filled(body_rect, 1.5, body);
+            if kind == Kind::UnreadDir {
+                painter.rect_stroke(
+                    body_rect,
+                    1.5,
+                    Stroke::new(1.5, theme::DIR_READ_ERROR),
+                    egui::StrokeKind::Inside,
+                );
+            }
+        }
+        Kind::MountPoint => {
+            let disk = Rect::from_center_size(center, Vec2::new(s, s * 0.6));
+            painter.rect_filled(disk, 2.0, theme::ICON_MOUNT);
+            painter.hline(
+                disk.min.x + 2.0..=disk.max.x - 2.0,
+                disk.center().y,
+                Stroke::new(1.0, Color32::from_gray(0x50)),
+            );
+        }
+        Kind::File | Kind::Symlink | Kind::Special => {
+            let page = Rect::from_center_size(center, Vec2::new(s * 0.72, s));
+            let fold = s * 0.3;
+            let points = vec![
+                page.min,
+                Pos2::new(page.max.x - fold, page.min.y),
+                Pos2::new(page.max.x, page.min.y + fold),
+                Pos2::new(page.max.x, page.max.y),
+                Pos2::new(page.min.x, page.max.y),
+            ];
+            painter.add(egui::Shape::convex_polygon(
+                points,
+                theme::ICON_FILE,
+                Stroke::new(1.0, theme::ICON_FILE_EDGE),
+            ));
+            if kind == Kind::Symlink {
+                let a = Pos2::new(page.min.x + 2.0, page.max.y - 3.0);
+                let b = Pos2::new(page.max.x - 2.0, page.min.y + fold + 2.0);
+                painter.line_segment([a, b], Stroke::new(2.0, theme::ICON_SYMLINK));
+                triangle(painter, b, 2.5, Dir::Up, theme::ICON_SYMLINK);
+            }
+            if kind == Kind::Special {
+                painter.circle_filled(page.center(), 2.5, theme::ICON_FILE_EDGE);
+            }
+        }
+    }
 }
 
 /// The sort direction marker on a column header, shared with the file view.

@@ -45,6 +45,15 @@ pub const DIR_READ_ERROR: Color32 = Color32::from_rgb(0xff, 0x00, 0x00);
 /// `SubtreeReadErrColor`
 pub const SUBTREE_READ_ERROR: Color32 = Color32::from_rgb(0xff, 0xff, 0x00);
 
+/// Tree icons, painted, in the colours of QDirStat's tree-medium set.
+pub const ICON_DIR: Color32 = Color32::from_rgb(0xe9, 0x9a, 0x2e);
+pub const ICON_DIR_TAB: Color32 = Color32::from_rgb(0xc9, 0x7c, 0x1a);
+pub const ICON_FILE: Color32 = Color32::from_rgb(0xd8, 0xd8, 0xd8);
+pub const ICON_FILE_EDGE: Color32 = Color32::from_rgb(0x90, 0x90, 0x90);
+pub const ICON_SYMLINK: Color32 = Color32::from_rgb(0x40, 0xa0, 0xff);
+pub const ICON_MOUNT: Color32 = Color32::from_rgb(0xa0, 0xa8, 0xb8);
+pub const ICON_SIZE: f32 = 14.0;
+
 /// Behind a search match in the File View.
 pub const SEARCH_HIGHLIGHT: Color32 = Color32::from_rgba_premultiplied(0x80, 0x80, 0x00, 0x80);
 

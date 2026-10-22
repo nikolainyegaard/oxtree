@@ -39,8 +39,13 @@ The tree is the central panel, the treemap a resizable bottom panel (F9 hides it
 | Percent bar colours by depth | 12 colours, see theme.rs | `[PercentBar] Colors` |
 | Percent bar column width | 180 | `PercentBarColumnWidth` |
 | Unreadable directory text | `#ff0000` | `DirReadErrColor` |
+| Directory with an unreadable directory below it | `#ffff00` | `SubtreeReadErrColor` (dark theme value) |
+| Row text | egui's strong text colour | egui's plain label colour is a mid grey meant for captions; rows are the content |
+| Tree icons | painted folder `#e99a2e`, page `#d8d8d8`, symlink arrow `#40a0ff`, disk `#a0a8b8` | the colours of QDirStat's tree-medium icon set, drawn with the painter so no image assets ship |
 | Status message timeout | 3 s | `StatusBarTimeoutMillisec` |
 | Row height | 20 | OxTree |
+
+What the tree colours mean, as in QDirStat: red name and `[Not Read]` is a directory that could not be read; a yellow name is a directory with such a directory somewhere below it; a grey name and `[Mount Point]` is another filesystem that was not entered. QDirStat also sets dominant items in bold (a child whose share is at least five times the median share of its siblings, clamped between 3% and 70%, only while sorted by size descending); OxTree does not, because the bundled font has no bold face and adding one costs more than the signal is worth. WizTree colours nothing in its tree.
 
 Category colours live in `crates/core/src/mime.rs` with the table: Junk red, Compressed Archives green, Uncompressed Archives olive, Compressed Files green, Images cyan, Uncompressed Images red, Videos `#a0ff00`, Music yellow, Documents blue, Source Files cyan, Object or Generated Files `#ffa000`, Libraries `#ffa000`, Executables magenta, Symbolic Links blue.
 
