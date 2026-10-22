@@ -1,6 +1,6 @@
 # OxTree vs WizTree: target-app parity
 
-> **Last reviewed:** 2026-10-22 · **Last updated:** 2026-10-22 · **Change:** File View landed (flat list, top-N cap, folders toggle, Ctrl+1 and Ctrl+2); earlier the same day: first version, inventory taken from WizTree's guide, feature page and version history · **Target:** WizTree 4.33 for Windows (16 September 2026), with WizTreeMac 1.00 as the reference for what WizTree does without an MFT
+> **Last reviewed:** 2026-10-22 · **Last updated:** 2026-10-22 · **Change:** search landed (WizTree syntax, name or path mode, regex via regex-lite, highlighted matches, Ctrl+F); earlier the same day: File View landed (flat list, top-N cap, folders toggle, Ctrl+1 and Ctrl+2); earlier the same day: first version, inventory taken from WizTree's guide, feature page and version history · **Target:** WizTree 4.33 for Windows (16 September 2026), with WizTreeMac 1.00 as the reference for what WizTree does without an MFT
 
 The authoritative answer to "how close is OxTree to WizTree, and what is left". Each row is a WizTree feature, what OxTree has for it today, and what closing the gap touches. The ranked list of what to build next is at the end. QDirStat is the reference for behaviour and defaults where WizTree has nothing to say; it is not the target.
 
@@ -8,8 +8,8 @@ The authoritative answer to "how close is OxTree to WizTree, and what is left". 
 
 | Number | Value | How |
 |---|---|---|
-| **Feature breadth** (does each WizTree feature exist?) | **39%** | Done rows plus half of Partial rows, over the 96 rows that apply on Linux; counted from the tables below |
-| **Rows** | 28 done, 19 partial, 49 missing, 6 not applicable, 3 declined | counted over the status column of the tables below |
+| **Feature breadth** (does each WizTree feature exist?) | **46%** | Done rows plus half of Partial rows, over the 96 rows that apply on Linux; counted from the tables below |
+| **Rows** | 35 done, 19 partial, 42 missing, 6 not applicable, 3 declined | counted over the status column of the tables below |
 | **Stage** | **alpha** | Scan, tree, treemap, cleanups and trash work end to end; everything WizTree calls the File View does not exist yet |
 
 The number is honest about breadth only. Where OxTree has a feature it is usually complete, because the views were built from QDirStat, which is deeper than WizTree in those areas. Where it is missing, it is missing entirely: there is no flat file list, no search, no file type view and no export.
@@ -102,15 +102,15 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 
 | WizTree feature | Status | OxTree today | What closing it touches |
 |---|---|---|---|
-| File name search with `*` and `?` wildcards | Missing | | A search box over the file view; the glob matcher exists in `crates/core/src/glob.rs` |
-| Multiple terms: space is AND, `\|` is OR, quotes group | Missing | | A small query parser in core with a test |
-| Size, allocated, date, time, name length and path length operators | Missing | | Same parser; dates need a parser for yyyy/mm/dd, today and now |
-| `=folder` and `=file` filters | Missing | | Same parser |
-| Regular expression search (`/` prefix) | Missing | | `regex-lite` (about 150 KB, no dependencies, no Unicode classes, enough for file names) behind the same prefix; the full `regex` crate was rejected for size. Part of the search work |
-| Match File Name Only or Match Entire Path | Missing | | A radio pair on the search box |
+| File name search with `*` and `?` wildcards | Done | Search box in the File View strip (Ctrl+F); a term without wildcards matches as a substring, as in WizTree | |
+| Multiple terms: space is AND, `\|` is OR, quotes group | Done | Plus `!` for NOT; quoted terms force a name match | |
+| Size, allocated, date, time, name length and path length operators | Done | `>100m`, `a<=1g`, `<2024/01/01`, `>=today-7`, `=13:00`, `>now-2h`, `namelen>40`, `pathlen<100`; dates and times are local | Allocated and size are the same number until the second size column exists |
+| `=folder` and `=file` filters | Done | | |
+| Regular expression search (`/` prefix) | Done | `regex-lite`, case-insensitive | |
+| Match File Name Only or Match Entire Path | Done | Name and Path radio buttons | |
 | Search history dropdown | Missing | | Last ten queries in the settings file |
 | Include and exclude filters (Ctrl+Shift+F), applied to scan results or during the scan | Partial | Exclude by directory name during the scan | The query parser applied to the arena, producing a filtered index for the views |
-| Highlighted matches in results | Missing | | Paint the matched range in the name column |
+| Highlighted matches in results | Done | The first substring term is highlighted in the path; globs and regexes are not | |
 | Accent-insensitive name search | Missing | | Fold to lowercase is there; accent folding needs a small table |
 
 ## File operations
@@ -195,7 +195,7 @@ What OxTree has that WizTree does not, so the comparison runs both ways: user-de
 Ordered by how much of WizTree's daily use each one unlocks, divided by what it touches.
 
 1. **File View with a top-N cap.** Done 2026-10-22.
-2. **Search and filter.** The query parser in core with the wildcard, AND and OR, size, date and type operators, then a search box over the file view and a filter over the tree. The glob matcher exists.
+2. **Search and filter.** Search done 2026-10-22. What remains is the tree filter: Ctrl+Shift+F include and exclude patterns applied to the scan results with sizes recomputed over the matches, plus the search history, both waiting on the settings file.
 3. **File Types view.** Extension table with count, size and colour, double click to list the files of that type in the file view. QDirStat's window is the model.
 4. **CSV export and clipboard copy.** One writer in core, three menu entries, a headless command line mode.
 5. **Multi-selection.** Both views, trash and cleanups over the set, totals in the status bar. Also what "select all of this extension" and duplicates cleanup need.

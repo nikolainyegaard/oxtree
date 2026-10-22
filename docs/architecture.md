@@ -3,7 +3,7 @@
 OxTree is a Cargo workspace with four layers. Dependencies point downwards only; nothing below the binary opens a window.
 
 ```
-apps/oxtree          the binary: arguments, the eframe window, --files, --bench, --screenshot
+apps/oxtree          the binary: arguments, the eframe window, --files, --search, --bench, --screenshot
 crates/ui            egui views, theme tokens, application state (oxtree-ui)
 crates/native        filesystem walk, child processes, config paths, cache files on disk (oxtree-native)
 crates/core          pure logic, no I/O: tree arena, layout, shading, categories, cleanups, formats (oxtree-core)
@@ -29,7 +29,8 @@ crates/core/src/
   tree.rs                  Tree arena: struct of arrays, children sorted by size, DirRecord input
   layout.rs                squarified layout with cushion coefficients, hit testing
   cushion.rs               per-pixel shading into an RGBA buffer across threads
-  flat.rs                  the File View's list: every node sorted, capped at N
+  flat.rs                  the File View's list: every node sorted, filtered, capped at N
+  query.rs                 WizTree's search syntax: parser and matcher
   mime.rs                  file categories and QDirStat's default table
   glob.rs                  * and ? matching for category patterns
   cleanup.rs               Cleanup struct, placeholders, standard set, INI mapping
@@ -81,12 +82,13 @@ Errors are `String`s shown in the status bar and, when they stop an action, in a
 
 ## Dependencies
 
-One direct dependency outside std:
+Two direct dependencies outside std:
 
 | Crate | Why |
 |-------|-----|
+| regex-lite 0.1 | The `/regex` mode of the search box. About 150 KB with no dependencies and no Unicode classes, which file names do not need; the full `regex` crate was rejected at about 500 KB plus its tree. |
 | eframe 0.37 (glow, wayland, x11, default fonts) | The window and the immediate-mode UI. glow is the lighter renderer; wgpu adds a shader compiler and more memory for nothing a treemap needs. 0.37 paces Wayland frames by compositor callbacks instead of a blocking swap, so the app keeps running when the compositor withholds frames. |
 
 Everything else is a child process: `gzip` for compressed cache files, `gio trash`, `kdialog` or `zenity` for the directory chooser, `date +%z` for the time zone, the user's shell for cleanups.
 
-Planned, with its justification settled in advance: `regex-lite` for the search box's regex mode, about 150 KB with no dependencies and no Unicode classes, which file names do not need; the full `regex` crate was rejected at about 500 KB plus its tree. The opt-in update check will use `curl` as a child process rather than an HTTP crate.
+The opt-in update check, when it comes, will use `curl` as a child process rather than an HTTP crate.

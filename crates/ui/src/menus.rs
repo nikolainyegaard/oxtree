@@ -18,6 +18,7 @@ const GO_UP: KeyboardShortcut = KeyboardShortcut::new(Modifiers::ALT, Key::Arrow
 const CLOSE_ALL: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::W);
 const VIEW_TREE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Num1);
 const VIEW_FILES: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Num2);
+const FIND: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::F);
 
 pub fn handle_shortcuts(app: &mut OxTreeApp, ctx: &egui::Context) {
     if ctx.memory(|m| m.focused().is_some()) {
@@ -62,6 +63,9 @@ pub fn handle_shortcuts(app: &mut OxTreeApp, ctx: &egui::Context) {
     }
     if pressed(&VIEW_FILES) {
         app.view = View::Files;
+    }
+    if pressed(&FIND) {
+        app.focus_search();
     }
     let hotkeys: Vec<(usize, String)> = app
         .cleanups
@@ -283,6 +287,13 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
                 .clicked()
             {
                 app.view = View::Files;
+                ui.close();
+            }
+            if ui
+                .add(egui::Button::new("Find Files...").shortcut_text(ctx.format_shortcut(&FIND)))
+                .clicked()
+            {
+                app.focus_search();
                 ui.close();
             }
             ui.separator();

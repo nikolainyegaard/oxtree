@@ -21,6 +21,18 @@ pub fn flat_list(
     ascending: bool,
     max: usize,
 ) -> Vec<NodeId> {
+    flat_list_filtered(tree, include_dirs, sort, ascending, max, |_| true)
+}
+
+/// `flat_list` keeping only the nodes `keep` accepts, before the cap.
+pub fn flat_list_filtered(
+    tree: &Tree,
+    include_dirs: bool,
+    sort: FlatSort,
+    ascending: bool,
+    max: usize,
+    keep: impl Fn(NodeId) -> bool,
+) -> Vec<NodeId> {
     let mut ids: Vec<NodeId> = (0..tree.len() as NodeId)
         .filter(|&n| n != tree.root())
         .filter(|&n| match tree.kind(n) {
@@ -28,6 +40,7 @@ pub fn flat_list(
             k if k.is_dir_like() => include_dirs,
             _ => true,
         })
+        .filter(|&n| keep(n))
         .collect();
     match sort {
         FlatSort::Size => ids.sort_unstable_by_key(|&n| tree.size(n)),

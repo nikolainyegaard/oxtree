@@ -69,6 +69,7 @@ Details panel labels: Total Size, Items, Files, Subdirs, Size, Allocated, Last M
 |--------|-----|
 | Switch view | Tree View and File View tabs above the list, Ctrl+1 and Ctrl+2 |
 | File View | Flat list, largest first; Show cap and Folders toggle in the tab strip; click selects, double click or Enter jumps to the item in the tree |
+| Search | Box in the File View strip, Ctrl+F focuses it; WizTree syntax (`*.mp3`, `>100m`, `<2024/01/01`, `=folder`, `/regex`, `\|` for OR, `!` for NOT); Name or Path radio; the first substring match is highlighted; a bad query shows its error in red under the strip |
 | Select | Click a row or a tile |
 | Context menu | Right-click a row or a tile: copy path, trash, cleanups, treemap zoom, up one level |
 | Expand or collapse | Click the arrow, double click the row, Right and Left arrow keys, Enter |

@@ -16,6 +16,7 @@ struct Args {
     bench: bool,
     screenshot: Option<PathBuf>,
     files_view: bool,
+    search: Option<String>,
     help: bool,
 }
 
@@ -26,6 +27,7 @@ fn parse_args() -> Args {
         bench: false,
         screenshot: None,
         files_view: false,
+        search: None,
         help: false,
     };
     let mut it = std::env::args().skip(1);
@@ -35,6 +37,7 @@ fn parse_args() -> Args {
             "--cache" => args.cache = it.next().map(PathBuf::from),
             "--screenshot" => args.screenshot = it.next().map(PathBuf::from),
             "--files" => args.files_view = true,
+            "--search" => args.search = it.next(),
             "-h" | "--help" => args.help = true,
             _ if a.starts_with("--") => args.help = true,
             _ => args.path = Some(PathBuf::from(a)),
@@ -47,7 +50,7 @@ fn main() {
     let args = parse_args();
     if args.help {
         out(
-            "usage: oxtree [DIRECTORY] [--cache FILE] [--files] [--bench] [--screenshot FILE.ppm]"
+            "usage: oxtree [DIRECTORY] [--cache FILE] [--files] [--search QUERY] [--bench] [--screenshot FILE.ppm]"
                 .to_string(),
         );
         return;
@@ -74,6 +77,10 @@ fn main() {
                     let mut app = OxTreeApp::new(args.path, args.cache, args.screenshot);
                     if args.files_view {
                         app.view = oxtree_ui::app::View::Files;
+                    }
+                    if let Some(s) = args.search {
+                        app.view = oxtree_ui::app::View::Files;
+                        app.file_view.search = s;
                     }
                     app
                 },
@@ -283,6 +290,42 @@ fn bench(path: PathBuf) {
         text.len(),
         back.is_ok()
     ));
+    // Search: a name query, then the same query against whole paths, which
+    // builds a path string per node.
+    for (label, match_path) in [("name", false), ("path", true)] {
+        let q = oxtree_core::query::Query::parse("lib >1k", 0, 0).unwrap_or_default();
+        let needs_path = q.needs_path(match_path);
+        let t = Instant::now();
+        let hits = oxtree_core::flat::flat_list_filtered(
+            &tree,
+            false,
+            oxtree_core::flat::FlatSort::Size,
+            false,
+            0,
+            |n| {
+                let path = if needs_path {
+                    tree.path(n)
+                } else {
+                    String::new()
+                };
+                q.matches(
+                    &oxtree_core::query::Item {
+                        name: tree.name(n),
+                        path: &path,
+                        size: tree.size(n),
+                        mtime: tree.mtime(n),
+                        is_dir: tree.is_dir_like(n),
+                    },
+                    match_path,
+                )
+            },
+        )
+        .len();
+        out(format!(
+            "search   {:>8.1} ms  \"lib >1k\" by {label}, {hits} hits",
+            t.elapsed().as_secs_f64() * 1000.0
+        ));
+    }
 }
 
 /// The benchmark honours the same environment switch as the app, so a scan

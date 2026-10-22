@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+regex-lite = "0.1.9"
 
 [lints]
 workspace = true

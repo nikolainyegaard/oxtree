@@ -8,6 +8,7 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Search in the File View with WizTree's syntax: substrings and `*`/`?` globs, `|` for OR, `!` for NOT, quotes, size, date, time, name and path length comparisons, `=folder` and `=file`, `/regex`; Name or Path matching, highlighted matches, Ctrl+F; `--search QUERY` on the command line
 - File View: every file in one flat list, largest first, with a Show cap of 1 000, 10 000, 100 000 or All and a Folders toggle; Ctrl+1 and Ctrl+2 switch views, double click or Enter jumps to the item in the tree; `--files` starts in it
 - Right-click menu on tree rows and treemap tiles
 - Rescans keep the view in place: old tree stays until the new one lands, selection, expanded folders and zoom carry over

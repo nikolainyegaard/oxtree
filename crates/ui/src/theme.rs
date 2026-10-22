@@ -45,6 +45,9 @@ pub const DIR_READ_ERROR: Color32 = Color32::from_rgb(0xff, 0x00, 0x00);
 /// `SubtreeReadErrColor`
 pub const SUBTREE_READ_ERROR: Color32 = Color32::from_rgb(0xff, 0xff, 0x00);
 
+/// Behind a search match in the File View.
+pub const SEARCH_HIGHLIGHT: Color32 = Color32::from_rgba_premultiplied(0x80, 0x80, 0x00, 0x80);
+
 /// `StatusBarTimeoutMillisec`
 pub const STATUS_TIMEOUT: Duration = Duration::from_millis(3000);
 

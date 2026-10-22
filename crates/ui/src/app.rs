@@ -11,9 +11,10 @@ use std::time::{Duration, Instant};
 use eframe::egui::{self, Context, TextureHandle};
 use oxtree_core::cleanup::{Cleanup, OutputPolicy, Refresh};
 use oxtree_core::cushion::Shading;
-use oxtree_core::flat::{flat_list, FlatSort};
+use oxtree_core::flat::{flat_list_filtered, FlatSort};
 use oxtree_core::layout::Tile;
 use oxtree_core::mime::Categorizer;
+use oxtree_core::query::{Item, Query};
 use oxtree_core::{format, Kind, NodeId, Tree};
 use oxtree_native::run::RunEvent;
 use oxtree_native::{ScanEvent, ScanHandle, ScanOptions};
@@ -55,6 +56,14 @@ pub struct FileViewState {
     pub max: usize,
     pub include_dirs: bool,
     pub scroll_to_selected: bool,
+    /// The search box text, WizTree's syntax; parsed on every rebuild.
+    pub search: String,
+    pub search_error: Option<String>,
+    pub query: Option<Query>,
+    /// Match name terms against the whole path instead of the name.
+    pub match_path: bool,
+    /// Set by Ctrl+F; the search box takes focus on the next frame.
+    pub focus_search: bool,
 }
 
 impl Default for FileViewState {
@@ -67,6 +76,11 @@ impl Default for FileViewState {
             max: 1_000,
             include_dirs: false,
             scroll_to_selected: false,
+            search: String::new(),
+            search_error: None,
+            query: None,
+            match_path: false,
+            focus_search: false,
         }
     }
 }
@@ -729,7 +743,50 @@ impl OxTreeApp {
             return;
         };
         let fv = &mut self.file_view;
-        fv.rows = flat_list(&tree, fv.include_dirs, fv.sort, fv.ascending, fv.max);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        match Query::parse(&fv.search, now, self.utc_offset) {
+            Ok(q) => {
+                fv.query = if q.is_empty() { None } else { Some(q) };
+                fv.search_error = None;
+            }
+            Err(e) => {
+                fv.query = None;
+                fv.search_error = Some(e);
+            }
+        }
+        let match_path = fv.match_path;
+        let needs_path = fv.query.as_ref().is_some_and(|q| q.needs_path(match_path));
+        let query = fv.query.clone();
+        fv.rows = flat_list_filtered(&tree, fv.include_dirs, fv.sort, fv.ascending, fv.max, |n| {
+            let Some(q) = &query else { return true };
+            // ponytail: the path is built per node when the query needs it;
+            // a shared path buffer is the upgrade if a million-file path
+            // search ever feels slow.
+            let path = if needs_path {
+                tree.path(n)
+            } else {
+                String::new()
+            };
+            q.matches(
+                &Item {
+                    name: tree.name(n),
+                    path: &path,
+                    size: tree.size(n),
+                    mtime: tree.mtime(n),
+                    is_dir: tree.is_dir_like(n),
+                },
+                match_path,
+            )
+        });
+    }
+
+    /// Ctrl+F: the File View with the search box focused.
+    pub fn focus_search(&mut self) {
+        self.view = View::Files;
+        self.file_view.focus_search = true;
     }
 
     pub fn set_file_sort(&mut self, sort: FlatSort) {

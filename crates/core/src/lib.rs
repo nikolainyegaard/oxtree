@@ -11,6 +11,7 @@ pub mod glob;
 pub mod ini;
 pub mod layout;
 pub mod mime;
+pub mod query;
 pub mod time;
 pub mod tree;
 

@@ -31,6 +31,17 @@ pub fn civil_from_days(z: i64) -> (i64, u32, u32) {
     (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
+/// Days since 1970-01-01 for a civil date, the inverse of `civil_from_days`.
+pub fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let mp = if m > 2 { m - 3 } else { m + 9 } as i64;
+    let doy = (153 * mp + 2) / 5 + d as i64 - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
 /// Parse a `+0200` / `-0530` style offset as printed by `date +%z`.
 pub fn parse_offset(s: &str) -> Option<i32> {
     let s = s.trim();
@@ -55,6 +66,12 @@ mod tests {
     fn dates() {
         assert_eq!(civil_from_days(0), (1970, 1, 1));
         assert_eq!(civil_from_days(19_723), (2024, 1, 1));
+        assert_eq!(days_from_civil(2024, 1, 1), 19_723);
+        assert_eq!(days_from_civil(1970, 1, 1), 0);
+        for days in [-1000, 0, 19_723, 20_000, 60_000] {
+            let (y, m, d) = civil_from_days(days);
+            assert_eq!(days_from_civil(y, m, d), days);
+        }
         assert_eq!(format(0x65e0_ce47, 0), "2024-02-29 18:34");
         assert_eq!(format(0x65e0_ce47, 3600), "2024-02-29 19:34");
         assert_eq!(format(0, 0), "");

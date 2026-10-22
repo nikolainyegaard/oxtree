@@ -2,6 +2,7 @@
 //! list, largest first, capped at the largest N. The tab strip above the
 //! central panel switches between this and the tree.
 
+use eframe::egui::text::CCursor;
 use eframe::egui::{self, Align2, Pos2, Rect, Sense, Ui, Vec2};
 use oxtree_core::flat::FlatSort;
 use oxtree_core::{format, time};
@@ -42,6 +43,25 @@ pub fn tabs(app: &mut OxTreeApp, ui: &mut Ui) {
             if ui.checkbox(&mut fv.include_dirs, "Folders").changed() {
                 fv.dirty = true;
             }
+            ui.separator();
+            let box_id = ui.scope_id().with("file-search");
+            let edit = egui::TextEdit::singleline(&mut fv.search)
+                .id(box_id)
+                .hint_text("Search: name, *.mp3, >100m, <2024/01/01, /regex")
+                .desired_width(260.0);
+            let resp = ui.add(edit);
+            if fv.focus_search {
+                fv.focus_search = false;
+                resp.request_focus();
+            }
+            if resp.changed() {
+                fv.dirty = true;
+            }
+            if ui.radio_value(&mut fv.match_path, false, "Name").changed()
+                || ui.radio_value(&mut fv.match_path, true, "Path").changed()
+            {
+                fv.dirty = true;
+            }
             if let Some(tree) = &app.tree {
                 let shown = app.file_view.rows.len();
                 let total = tree.total_files(tree.root())
@@ -61,6 +81,11 @@ pub fn tabs(app: &mut OxTreeApp, ui: &mut Ui) {
             }
         }
     });
+    if app.view == View::Files {
+        if let Some(err) = &app.file_view.search_error {
+            ui.label(egui::RichText::new(err.as_str()).color(theme::DIR_READ_ERROR));
+        }
+    }
 }
 
 struct Columns {
@@ -215,17 +240,28 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
                 Pos2::new(rect.left() + 4.0, rect.top()),
                 Pos2::new(rect.left() + 4.0 + cols.path_w, rect.bottom()),
             );
-            painter.with_clip_rect(path_clip).text(
-                Pos2::new(rect.left() + 4.0, y),
-                Align2::LEFT_CENTER,
-                tree.path(node),
-                font.clone(),
-                if tree.is_dir_like(node) {
-                    weak
-                } else {
-                    text_color
-                },
-            );
+            let path = tree.path(node);
+            let color = if tree.is_dir_like(node) {
+                weak
+            } else {
+                text_color
+            };
+            let clipped = painter.with_clip_rect(path_clip);
+            let galley = clipped.layout_no_wrap(path.clone(), font.clone(), color);
+            let pos = Pos2::new(rect.left() + 4.0, y - galley.size().y / 2.0);
+            if let Some((a, b)) = search_highlight(app, &path, tree.name(node)) {
+                let x0 = galley.pos_from_cursor(CCursor::new(a)).min.x;
+                let x1 = galley.pos_from_cursor(CCursor::new(b)).min.x;
+                clipped.rect_filled(
+                    Rect::from_min_max(
+                        Pos2::new(pos.x + x0, rect.top() + 2.0),
+                        Pos2::new(pos.x + x1, rect.bottom() - 2.0),
+                    ),
+                    2.0,
+                    theme::SEARCH_HIGHLIGHT,
+                );
+            }
+            clipped.galley(pos, galley, color);
             painter.text(
                 Pos2::new(cols.size_x + theme::COL_SIZE, y),
                 Align2::RIGHT_CENTER,
@@ -269,6 +305,19 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
             app.select(node, false);
         }
     }
+}
+
+/// Character range to highlight in the displayed path: the match in the
+/// whole path in path mode, else the match in the name, shifted to where
+/// the name sits at the end of the path.
+fn search_highlight(app: &OxTreeApp, path: &str, name: &str) -> Option<(usize, usize)> {
+    let q = app.file_view.query.as_ref()?;
+    if app.file_view.match_path {
+        return q.highlight(path);
+    }
+    let (a, b) = q.highlight(name)?;
+    let offset = path.chars().count().checked_sub(name.chars().count())?;
+    Some((offset + a, offset + b))
 }
 
 /// Up, Down, Home and End move the selection through the list; Enter jumps
