@@ -217,7 +217,7 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
             let marker_rect =
                 Rect::from_center_size(Pos2::new(indent + 6.0, y), Vec2::splat(theme::ROW_HEIGHT));
             if expandable {
-                let open = app.expanded.contains(&row.node);
+                let open = app.expansion.is_open(row.node);
                 triangle(
                     &painter,
                     Pos2::new(indent + 6.0, y),
@@ -534,7 +534,7 @@ pub fn handle_keys(app: &mut OxTreeApp, ctx: &egui::Context) {
     let Some(idx) = app.row_index_of(sel) else {
         return;
     };
-    let expanded = app.expanded.contains(&sel);
+    let expanded = app.expansion.is_open(sel);
     let has_children = app
         .tree
         .as_ref()

@@ -53,6 +53,7 @@ crates/ui/src/
   lib.rs
   app.rs                   OxTreeApp state, pump(), actions, row flattening, treemap jobs
   theme.rs                 tokens
+  expansion.rs             which rows are open and whether by hand or by a reveal
   tree_view.rs             header and virtual rows, keyboard navigation
   file_view.rs             tab strip, flat list with cap and folders toggle, keyboard navigation
   treemap_view.rs          texture, hover, click, zoom, selection outlines

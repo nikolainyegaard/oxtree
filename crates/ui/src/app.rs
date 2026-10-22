@@ -19,6 +19,7 @@ use oxtree_core::{format, Kind, NodeId, Tree};
 use oxtree_native::run::RunEvent;
 use oxtree_native::{ScanEvent, ScanHandle, ScanOptions};
 
+use crate::expansion::Expansion;
 use crate::theme;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -138,6 +139,7 @@ pub struct OutputWindow {
 pub struct ViewMemory {
     pub selected: Option<String>,
     pub expanded: Vec<String>,
+    pub temporary: Vec<String>,
     pub treemap_root: String,
 }
 
@@ -164,7 +166,7 @@ pub struct OxTreeApp {
     pub subtree_errors: HashSet<NodeId>,
 
     pub selected: Option<NodeId>,
-    pub expanded: HashSet<NodeId>,
+    pub expansion: Expansion,
     pub rows: Vec<Row>,
     pub rows_dirty: bool,
     pub scroll_to_selected: bool,
@@ -246,7 +248,7 @@ impl OxTreeApp {
             unreadable: 0,
             subtree_errors: HashSet::new(),
             selected: None,
-            expanded: HashSet::new(),
+            expansion: Expansion::default(),
             rows: Vec::new(),
             rows_dirty: true,
             scroll_to_selected: false,
@@ -335,7 +337,7 @@ impl OxTreeApp {
     pub fn open_directory(&mut self, path: PathBuf) {
         self.tree = None;
         self.selected = None;
-        self.expanded.clear();
+        self.expansion.close_all(0);
         self.rows.clear();
         self.rows_dirty = true;
         self.treemap = TreemapState::default();
@@ -354,7 +356,17 @@ impl OxTreeApp {
         if let Some(tree) = &self.tree {
             self.view_memory = Some(ViewMemory {
                 selected: self.selected.map(|n| tree.path(n)),
-                expanded: self.expanded.iter().map(|&n| tree.path(n)).collect(),
+                expanded: self
+                    .expansion
+                    .open_nodes()
+                    .filter(|&n| !self.expansion.is_temporary(n))
+                    .map(|n| tree.path(n))
+                    .collect(),
+                temporary: self
+                    .expansion
+                    .temporary_nodes()
+                    .map(|n| tree.path(n))
+                    .collect(),
                 treemap_root: tree.path(self.treemap_root),
             });
         }
@@ -418,15 +430,14 @@ impl OxTreeApp {
     fn install_tree(&mut self, tree: Tree, elapsed: Option<Duration>, unreadable: usize) {
         self.scan = None;
         let root = tree.root();
-        self.expanded.clear();
-        self.expanded.insert(root);
+        self.expansion.close_all(root);
         match self.view_memory.take() {
             Some(m) => {
-                for p in &m.expanded {
-                    if let Some(n) = tree.find(p) {
-                        self.expanded.insert(n);
-                    }
-                }
+                let permanent: Vec<NodeId> =
+                    m.expanded.iter().filter_map(|p| tree.find(p)).collect();
+                let temporary: Vec<NodeId> =
+                    m.temporary.iter().filter_map(|p| tree.find(p)).collect();
+                self.expansion.restore(root, permanent, temporary);
                 self.selected = Some(m.selected.map(|p| tree.find_nearest(&p)).unwrap_or(root));
                 self.treemap_root = tree.find(&m.treemap_root).unwrap_or(root);
                 // Keep the old texture on screen until the new render lands;
@@ -692,7 +703,7 @@ impl OxTreeApp {
         let sort = self.sort;
         while let Some((node, depth)) = stack.pop() {
             self.rows.push(Row { node, depth });
-            if !self.expanded.contains(&node) {
+            if !self.expansion.is_open(node) {
                 continue;
             }
             let mut kids: Vec<NodeId> = tree.children(node).collect();
@@ -703,15 +714,13 @@ impl OxTreeApp {
         }
     }
 
-    pub fn select(&mut self, node: NodeId, from_treemap: bool) {
+    /// Select; with `reveal` the path to the node is opened temporarily
+    /// and the tree scrolls to it (a treemap click, a File View jump).
+    pub fn select(&mut self, node: NodeId, reveal: bool) {
         self.selected = Some(node);
-        if from_treemap {
+        if reveal {
             if let Some(tree) = &self.tree {
-                let mut p = tree.parent(node);
-                while let Some(a) = p {
-                    self.expanded.insert(a);
-                    p = tree.parent(a);
-                }
+                self.expansion.reveal(tree, node);
                 self.rows_dirty = true;
                 self.scroll_to_selected = true;
             }
@@ -721,17 +730,18 @@ impl OxTreeApp {
     }
 
     pub fn toggle_expand(&mut self, node: NodeId) {
-        if !self.expanded.remove(&node) {
-            self.expanded.insert(node);
+        if let Some(tree) = &self.tree {
+            self.expansion.toggle_by_hand(tree, node);
+            self.rows_dirty = true;
         }
-        self.rows_dirty = true;
     }
 
     pub fn set_expanded(&mut self, node: NodeId, expanded: bool) {
+        let Some(tree) = &self.tree else { return };
         let changed = if expanded {
-            self.expanded.insert(node)
+            self.expansion.open_by_hand(tree, node)
         } else {
-            self.expanded.remove(&node)
+            self.expansion.close(node)
         };
         if changed {
             self.rows_dirty = true;
@@ -739,9 +749,8 @@ impl OxTreeApp {
     }
 
     pub fn close_all_levels(&mut self) {
-        self.expanded.clear();
         if let Some(tree) = &self.tree {
-            self.expanded.insert(tree.root());
+            self.expansion.close_all(tree.root());
             self.selected = Some(tree.root());
         }
         self.rows_dirty = true;

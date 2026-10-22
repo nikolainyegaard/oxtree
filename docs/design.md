@@ -76,6 +76,7 @@ Details panel labels: Total Size, Items, Files, Subdirs, Size, Allocated, Last M
 | File View | Flat list, largest first; Show cap and Folders toggle in the tab strip; click selects, double click or Enter jumps to the item in the tree |
 | Search | Box in the File View strip, Ctrl+F focuses it; WizTree syntax (`*.mp3`, `>100m`, `<2024/01/01`, `=folder`, `/regex`, `\|` for OR, `!` for NOT); Name or Path radio; the first substring match is highlighted; a bad query shows its error in red under the strip |
 | Select | Click a row or a tile |
+| Reveal | A treemap click or a File View jump opens the path to the item temporarily; the next reveal closes the temporary rows that are not on its own path, so the tree does not fill up. Rows opened by hand in the tree stay open, and opening something by hand inside a revealed path makes that path permanent |
 | Context menu | Right-click a row or a tile: copy path, trash, cleanups, treemap zoom, up one level |
 | Expand or collapse | Click the arrow, double click the row, Right and Left arrow keys, Enter |
 | Move selection | Up, Down, Home, End |
