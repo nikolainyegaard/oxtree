@@ -9,7 +9,8 @@ license = "GPL-2.0-only"
 repository = "https://github.com/nikolainyegaard/oxtree"
 
 [workspace.dependencies]
-eframe = { version = "0.37.0", default-features = false, features = ["glow", "wayland", "x11", "default_fonts", "clipboard"] }
+eframe = { version = "0.37.0", default-features = false, features = ["glow", "wayland", "x11", "system_fonts", "clipboard"] }
+epaint_default_fonts = "0.37.0"
 oxtree-core = { path = "crates/core" }
 oxtree-native = { path = "crates/native" }
 oxtree-ui = { path = "crates/ui" }

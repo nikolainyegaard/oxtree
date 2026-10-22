@@ -18,6 +18,7 @@ required-features = ["diagnostics"]
 [dependencies]
 log = { version = "0.4.34", optional = true }
 eframe.workspace = true
+epaint_default_fonts.workspace = true
 oxtree-core.workspace = true
 oxtree-native.workspace = true
 oxtree-ui.workspace = true

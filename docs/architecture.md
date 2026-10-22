@@ -85,13 +85,14 @@ Errors are `String`s shown in the status bar and, when they stop an action, in a
 
 ## Dependencies
 
-Three direct dependencies outside std:
+Four direct dependencies outside std:
 
 | Crate | Why |
 |-------|-----|
 | log 0.4, optional | The `OXTREE_STARTUP` logger that timestamps eframe's, winit's and glutin's own log records; only with the `diagnostics` feature. The crate is already in the tree through eframe and has no dependencies. |
 | regex-lite 0.1 | The `/regex` mode of the search box. About 150 KB with no dependencies and no Unicode classes, which file names do not need; the full `regex` crate was rejected at about 500 KB plus its tree. |
-| eframe 0.37 (glow, wayland, x11, default fonts, clipboard) | The window and the immediate-mode UI. glow is the lighter renderer; wgpu adds a shader compiler and more memory for nothing a treemap needs. The clipboard feature pulls in arboard and smithay-clipboard so Ctrl+V reads the system clipboard; without it egui only pastes what it copied itself. 0.37 paces Wayland frames by compositor callbacks instead of a blocking swap, so the app keeps running when the compositor withholds frames. |
+| epaint_default_fonts 0.37 | Ubuntu Light and egui's icon font, registered by hand so that Hack, the 309 KB monospace face, stays out of the binary. |
+| eframe 0.37 (glow, wayland, x11, system_fonts, clipboard) | The window and the immediate-mode UI. glow is the lighter renderer; wgpu adds a shader compiler and more memory for nothing a treemap needs. The clipboard feature pulls in arboard and smithay-clipboard so Ctrl+V reads the system clipboard; without it egui only pastes what it copied itself. 0.37 paces Wayland frames by compositor callbacks instead of a blocking swap, so the app keeps running when the compositor withholds frames. The system_fonts feature loads the machine's own fonts on demand for characters the bundled face lacks, which is what makes CJK and emoji file names readable; it costs about 620 KB of fontique and friends. |
 
 Everything else is a child process: `pkexec` for Rescan as Root, `df` for the sizes in the Open Directory list, `gzip` for compressed cache files, `gio trash`, `kdialog` or `zenity` for the directory chooser, `date +%z` for the time zone, the user's shell for cleanups.
 

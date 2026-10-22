@@ -95,6 +95,7 @@ fn main() {
         options,
         Box::new(move |cc| {
             startup_mark("window, GL context and egui ready (winit, Wayland, glutin, Mesa)");
+            cc.egui_ctx.set_fonts(fonts());
             Ok(Box::new(Shell {
                 app: {
                     let mut app = OxTreeApp::new(early, args.cache);
@@ -121,6 +122,36 @@ fn main() {
         eprintln!("OxTree could not open a window: {e}");
         std::process::exit(1);
     }
+}
+
+/// One bundled face, Ubuntu Light, for both families, plus egui's small
+/// icon font for the glyphs its widgets draw. Hack, egui's monospace face,
+/// is left out: the two monospace labels in the app read fine in Ubuntu
+/// and the font is 309 KB. Scripts the bundled face lacks, CJK and emoji
+/// in file names among them, come from the system's fonts on demand
+/// through eframe's system font provider.
+fn fonts() -> egui::FontDefinitions {
+    use egui::{FontData, FontFamily, FontTweak};
+    use std::sync::Arc;
+    let mut defs = egui::FontDefinitions::empty();
+    defs.font_data.insert(
+        "Ubuntu-Light".to_owned(),
+        Arc::new(FontData::from_static(epaint_default_fonts::UBUNTU_LIGHT)),
+    );
+    defs.font_data.insert(
+        "egui-icons".to_owned(),
+        Arc::new(
+            FontData::from_static(epaint_default_fonts::EGUI_ICONS).tweak(FontTweak {
+                scale: 0.90,
+                ..Default::default()
+            }),
+        ),
+    );
+    let stack = vec!["Ubuntu-Light".to_owned(), "egui-icons".to_owned()];
+    defs.families
+        .insert(FontFamily::Proportional, stack.clone());
+    defs.families.insert(FontFamily::Monospace, stack);
+    defs
 }
 
 struct Shell {

@@ -8,6 +8,7 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Only Ubuntu Light and egui's icon font are bundled; the monospace face is gone and the two monospace labels use the proportional one
 - A `diagnostics` Cargo feature, off in release builds, holds the development tools: `OXTREE_STARTUP` startup timing, `OXTREE_STATS`, `--screenshot`, and the benchmark as its own `oxtree-bench` binary
 
 - File, Rescan as Root: OxTree running as root through polkit replaces the window on the same directory, for the directories the user cannot read; the title shows [root], configuration is read from the user and never written; a polkit action file in `packaging/`
@@ -26,6 +27,8 @@ uses [Semantic Versioning](https://semver.org/).
 - eframe 0.37: on Wayland, frames are paced by the compositor's frame callbacks instead of a blocking swap, and the app keeps running while the compositor withholds frames (locked screen, covered window)
 
 ### Fixed
+
+- File names in scripts the bundled font lacks, Japanese and emoji among them, rendered as boxes; the system's fonts are now loaded on demand for them
 
 - Row text in the tree and file views uses the strong text colour; egui's default label grey was never a choice
 

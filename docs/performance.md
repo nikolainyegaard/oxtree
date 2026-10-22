@@ -8,7 +8,7 @@ Checked in the change checklist. A change that moves one says so in the commit b
 
 | Measure | Budget | 0.1.0 | How to measure |
 |---------|--------|-------|----------------|
-| Stripped release binary | 10 MB | 8.4 MB | `ls -l target/release/oxtree` |
+| Stripped release binary | 10 MB | 8.8 MB (plain build; the diagnostics build is 9.1 MB) | `ls -l target/release/oxtree` |
 | Scan of /usr, 352k nodes, warm, on mains | 150 ms | 125 ms (250 ms on battery with the powersave governor) | `target/release/oxtree-bench /usr` from a `--features diagnostics` build |
 | Treemap layout plus render at 1900x600 | 15 ms | 1.7 + 7.7 ms | same |
 | First frame, performance power profile | 50 ms | 34 ms (86 to 90 ms in the balanced profile on battery) | `target/release/oxtree /usr 2>&1 \| grep 'first frame'`; stages with `OXTREE_STARTUP=1`; check `/sys/firmware/acpi/platform_profile` first |
