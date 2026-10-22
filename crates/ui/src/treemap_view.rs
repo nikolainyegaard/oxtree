@@ -74,6 +74,62 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
     let tiles = app.treemap.tiles.clone();
     let Some(tree) = app.tree.clone() else { return };
 
+    // Free space: a strip on the right, when the map shows the whole tree.
+    if app.treemap.free_px > 0 && app.treemap.rendered_generation == app.treemap.generation {
+        let x0 = rect.left() + (tw.saturating_sub(app.treemap.free_px)) as f32 / ppp;
+        let strip = Rect::from_min_max(Pos2::new(x0, drawn.top()), drawn.max).intersect(rect);
+        painter.rect_filled(strip, 0.0, theme::FREE_SPACE);
+        if let Some((avail, _)) = app.free_space {
+            let label = format!("Free space\n{}", format::size(avail));
+            if strip.width() >= 40.0 && strip.height() >= 28.0 {
+                painter.text(
+                    strip.center(),
+                    egui::Align2::CENTER_CENTER,
+                    label,
+                    egui::TextStyle::Small.resolve(ui.style()),
+                    egui::Color32::from_gray(0xe0),
+                );
+            }
+        }
+    }
+
+    // Names on the leaf tiles that have room for them: a tile is a leaf
+    // here when the next tile in the layout is not its child.
+    if app.show_tile_names {
+        let small = egui::TextStyle::Small.resolve(ui.style());
+        let min_w = 48.0 * ppp as f64;
+        let min_h = 14.0 * ppp as f64;
+        for (i, t) in tiles.iter().enumerate() {
+            if t.rect.w < min_w || t.rect.h < min_h {
+                continue;
+            }
+            let has_laid_out_child = tiles
+                .get(i + 1)
+                .is_some_and(|next| tree.parent(next.node) == Some(t.node));
+            if has_laid_out_child || t.node == app.treemap_root {
+                continue;
+            }
+            let r = to_screen(t.rect);
+            let clip = painter.with_clip_rect(r.shrink(2.0));
+            let pos = r.min + Vec2::new(3.0, 2.0);
+            let name = tree.name(t.node);
+            clip.text(
+                pos + Vec2::new(1.0, 1.0),
+                egui::Align2::LEFT_TOP,
+                name,
+                small.clone(),
+                egui::Color32::from_black_alpha(0xa0),
+            );
+            clip.text(
+                pos,
+                egui::Align2::LEFT_TOP,
+                name,
+                small.clone(),
+                egui::Color32::WHITE,
+            );
+        }
+    }
+
     // Hover
     app.treemap.hover = None;
     if let Some(pos) = resp.hover_pos() {
@@ -94,9 +150,18 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
             app.select(n, true);
             app.treemap_zoom_in();
         }
-    } else if resp.clicked() || resp.secondary_clicked() {
+    } else if resp.secondary_clicked() {
         if let Some(n) = app.treemap.hover {
-            app.select(n, true);
+            app.select_for_menu(n);
+        }
+    } else if resp.clicked() {
+        if let Some(n) = app.treemap.hover {
+            let mods = ui.input(|i| i.modifiers);
+            if mods.ctrl {
+                app.select_in(n, mods, &[]);
+            } else {
+                app.select(n, true);
+            }
         }
     }
     resp.context_menu(|ui| crate::menus::context_menu(app, ui));
@@ -122,6 +187,23 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
         }
     }
 
+    // Every selected item's tile in the selection colour, then the current
+    // item on top.
+    if app.marked.len() > 1 {
+        for &m in &app.marked {
+            if Some(m) == app.selected {
+                continue;
+            }
+            if let Some(t) = tile_of(&tiles, m) {
+                painter.rect_stroke(
+                    to_screen(t.rect).shrink(0.5),
+                    0.0,
+                    Stroke::new(2.0, theme::SELECTED_ITEMS),
+                    egui::StrokeKind::Inside,
+                );
+            }
+        }
+    }
     // Selection outline: the selected node's tile, or the nearest laid-out
     // ancestor when the node itself was too small to draw.
     if let Some(sel) = app.selected {

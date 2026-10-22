@@ -8,6 +8,17 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- File Types view (Ctrl+3, F8): one row per extension with its category colour, file count, size and share; double click lists the type's files in the File View
+- Duplicates in the File View: a combo for name and size, or name, size and date; the list then holds only files with a duplicate, grouped, with Dups and Dup Size columns
+- Multi-selection: Ctrl+click and Shift+click in the tree and the File View, Ctrl+click on treemap tiles, Ctrl+A; Copy Path, Move to Trash and the cleanups act on every selected item, the status bar and the details panel show the selection's count and size
+- Export to CSV (Ctrl+Alt+E), Export Subtree to CSV in the right-click menu, tab separated, UTC and depth options; `oxtree DIR --export FILE` writes the same without a window, with `--tsv`, `--utc`, `--max-depth`, `--percent` and `--search` as a filter
+- Copy Tree to Clipboard (Ctrl+Alt+C): the rows as shown, indented
+- Names on the treemap tiles that have room for them; View, Names on Treemap Tiles turns them off
+- Free space of the scanned filesystem in the status bar and the details panel, and as a `<Free Space>` tree row and a grey treemap strip when the scanned directory is a mount point
+- Expand All Tree Levels (Shift+F4) and Expand Tree to Level 1 to 9
+- A Reset button in the tab strip: closes the tree, clears the search, filters and duplicates mode, restores default sorting, column widths and treemap zoom
+- Columns resize by dragging the header dividers, in all three tables; rows alternate in colour
+- `--types` starts in the File Types view
 - The tree scrolls sideways: the Name column keeps at least 400 px and the other columns run past the right edge when the window is narrow, with the header following; the header also lines up with the rows now instead of sitting a scrollbar's width to the right
 - Only Ubuntu Light and egui's icon font are bundled; the monospace face is gone and the two monospace labels use the proportional one
 - A `diagnostics` Cargo feature, off in release builds, holds the development tools: `OXTREE_STARTUP` startup timing, `OXTREE_STATS`, `--screenshot`, and the benchmark as its own `oxtree-bench` binary
@@ -26,6 +37,10 @@ uses [Semantic Versioning](https://semver.org/).
 
 - Scan threads wake the UI when they have news, so a finished scan is drawn on the next frame; the configuration reads run on a thread started before the window
 - eframe 0.37: on Wayland, frames are paced by the compositor's frame callbacks instead of a blocking swap, and the app keeps running while the compositor withholds frames (locked screen, covered window)
+
+### Changed
+
+- Hard-linked files count once: each link carries an equal share of the file's allocated size
 
 ### Fixed
 

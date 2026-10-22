@@ -5,6 +5,8 @@
 pub mod cache;
 pub mod cleanup;
 pub mod cushion;
+pub mod dupes;
+pub mod export;
 pub mod flat;
 pub mod format;
 pub mod glob;
@@ -14,5 +16,6 @@ pub mod mime;
 pub mod query;
 pub mod time;
 pub mod tree;
+pub mod types;
 
 pub use tree::{DirRecord, FileRecord, Kind, NodeId, Tree, NO_NODE};

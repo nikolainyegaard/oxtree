@@ -14,7 +14,57 @@ pub fn show(app: &mut OxTreeApp, ctx: &Context) {
     confirm(app, ctx);
     error(app, ctx);
     about(app, ctx);
+    export(app, ctx);
     output(app, ctx);
+}
+
+fn export(app: &mut OxTreeApp, ctx: &Context) {
+    let Some(mut d) = app.export_dialog.clone() else {
+        return;
+    };
+    let Some(tree) = app.tree.clone() else {
+        app.export_dialog = None;
+        return;
+    };
+    let mut done = None;
+    egui::Modal::new(Id::unique("export")).show(ctx, |ui| {
+        ui.set_width(520.0);
+        ui.heading("Export to CSV");
+        ui.label(format!("Exporting {}", tree.path(d.root)));
+        ui.add_space(4.0);
+        ui.label("File to write:");
+        let resp = ui.add(egui::TextEdit::singleline(&mut d.path).desired_width(f32::INFINITY));
+        let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut d.tsv, "Tab separated");
+            ui.checkbox(&mut d.utc, "UTC timestamps");
+            ui.checkbox(&mut d.percent_of_parent, "% of parent column");
+        });
+        ui.horizontal(|ui| {
+            ui.label("Levels below the root to include, empty for all:");
+            ui.add(egui::TextEdit::singleline(&mut d.max_depth).desired_width(40.0));
+        });
+        ui.add_space(8.0);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.button("Export").clicked() || enter {
+                done = Some(true);
+            }
+            if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                done = Some(false);
+            }
+        });
+    });
+    match done {
+        Some(true) => {
+            app.export_dialog = None;
+            if !d.path.trim().is_empty() {
+                app.export_csv(&d);
+            }
+        }
+        Some(false) => app.export_dialog = None,
+        None => app.export_dialog = Some(d),
+    }
 }
 
 fn open_directory(app: &mut OxTreeApp, ctx: &Context) {
@@ -167,15 +217,26 @@ fn confirm(app: &mut OxTreeApp, ctx: &Context) {
         ui.heading("Please Confirm");
         ui.add_space(4.0);
         ui.label(egui::RichText::new(cleanup.display_title()).strong());
-        ui.label(format!(
-            "for {} {}",
-            if tree.is_dir_like(node) {
-                "directory"
-            } else {
-                "file"
-            },
-            tree.path(node)
-        ));
+        let targets = app.cleanup_targets(index);
+        if targets.len() > 1 {
+            ui.label(format!("for {} items, one after the other:", targets.len()));
+            for &t in targets.iter().take(8) {
+                ui.label(egui::RichText::new(tree.path(t)).weak());
+            }
+            if targets.len() > 8 {
+                ui.label(egui::RichText::new(format!("and {} more", targets.len() - 8)).weak());
+            }
+        } else {
+            ui.label(format!(
+                "for {} {}",
+                if tree.is_dir_like(node) {
+                    "directory"
+                } else {
+                    "file"
+                },
+                tree.path(node)
+            ));
+        }
         ui.add_space(4.0);
         ui.label(
             egui::RichText::new(cleanup.expand(
@@ -200,7 +261,7 @@ fn confirm(app: &mut OxTreeApp, ctx: &Context) {
     match answer {
         Some(true) => {
             app.confirm = None;
-            app.run_cleanup(index, node);
+            app.run_cleanup_on_selection(index);
         }
         Some(false) => app.confirm = None,
         None => {}

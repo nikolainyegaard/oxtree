@@ -11,14 +11,18 @@ use std::time::{Duration, Instant};
 use eframe::egui::{self, Context, TextureHandle};
 use oxtree_core::cleanup::{Cleanup, OutputPolicy, Refresh};
 use oxtree_core::cushion::Shading;
+use oxtree_core::dupes::DupMode;
+use oxtree_core::export::ExportOptions;
 use oxtree_core::flat::{flat_list_filtered, FlatSort};
 use oxtree_core::layout::Tile;
 use oxtree_core::mime::Categorizer;
 use oxtree_core::query::{Item, Query};
-use oxtree_core::{format, Kind, NodeId, Tree};
+use oxtree_core::types::TypeRow;
+use oxtree_core::{format, Kind, NodeId, Tree, NO_NODE};
 use oxtree_native::run::RunEvent;
 use oxtree_native::{ScanEvent, ScanHandle, ScanOptions, Wake};
 
+use crate::columns::Columns;
 use crate::expansion::Expansion;
 use crate::theme;
 
@@ -45,7 +49,58 @@ pub struct Sort {
 pub enum View {
     Tree,
     Files,
+    Types,
 }
+
+/// Sort column of the File Types view.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TypeSort {
+    Ext,
+    Category,
+    Count,
+    Size,
+}
+
+/// The Export to CSV dialog's fields.
+#[derive(Clone, Debug)]
+pub struct ExportDialog {
+    pub root: NodeId,
+    pub path: String,
+    pub tsv: bool,
+    pub max_depth: String,
+    pub utc: bool,
+    pub percent_of_parent: bool,
+}
+
+/// Default widths: name, percent bar, percent, size, items, files,
+/// subdirs, last modified. Each includes its padding.
+pub const TREE_COLUMNS: [f32; 8] = [
+    theme::COL_NAME_MIN,
+    theme::PERCENT_BAR_COLUMN_WIDTH + theme::COL_GAP,
+    theme::COL_PERCENT_NUM + theme::COL_GAP,
+    theme::COL_SIZE + theme::COL_GAP,
+    theme::COL_COUNT + theme::COL_GAP,
+    theme::COL_COUNT + theme::COL_GAP,
+    theme::COL_COUNT + theme::COL_GAP,
+    theme::COL_MTIME + theme::COL_GAP,
+];
+/// Path, size, percent, last modified, duplicates, duplicate size.
+pub const FILE_COLUMNS: [f32; 6] = [
+    theme::COL_PATH_MIN,
+    theme::COL_SIZE + theme::COL_GAP,
+    theme::COL_PERCENT_NUM + theme::COL_GAP,
+    theme::COL_MTIME + theme::COL_GAP,
+    theme::COL_COUNT + theme::COL_GAP,
+    theme::COL_SIZE + theme::COL_GAP,
+];
+/// Extension, category, files, size, percent.
+pub const TYPES_COLUMNS: [f32; 5] = [
+    160.0,
+    200.0,
+    theme::COL_COUNT + theme::COL_GAP + 20.0,
+    theme::COL_SIZE + theme::COL_GAP,
+    theme::COL_PERCENT_NUM + theme::COL_GAP,
+];
 
 /// The File View's list and its controls.
 pub struct FileViewState {
@@ -65,6 +120,8 @@ pub struct FileViewState {
     pub match_path: bool,
     /// Set by Ctrl+F; the search box takes focus on the next frame.
     pub focus_search: bool,
+    /// Duplicates only, grouped, with the two duplicate columns.
+    pub dup_mode: DupMode,
     /// The list is built on a worker thread so typing never waits for it.
     /// `dirty` set while a job runs means one more run after it finishes,
     /// so a burst of keystrokes costs at most two builds.
@@ -87,6 +144,7 @@ impl Default for FileViewState {
             query: None,
             match_path: false,
             focus_search: false,
+            dup_mode: DupMode::Off,
             job: None,
             generation: 0,
         }
@@ -105,6 +163,8 @@ pub struct RenderResult {
     pub height: usize,
     pub tiles: Arc<Vec<Tile>>,
     pub pixels: Vec<u8>,
+    /// Width in pixels of the free space strip on the right, 0 for none.
+    pub free_px: usize,
 }
 
 #[derive(Default)]
@@ -123,6 +183,7 @@ pub struct TreemapState {
     pub size_changed_at: Option<Instant>,
     pub job_started_at: Option<Instant>,
     pub rebuilds: u64,
+    pub free_px: usize,
 }
 
 pub struct OutputWindow {
@@ -165,7 +226,12 @@ pub struct OxTreeApp {
     /// shown in the subtree error colour as QDirStat does.
     pub subtree_errors: HashSet<NodeId>,
 
+    /// The current item. Always in `marked` when the selection is more
+    /// than one item.
     pub selected: Option<NodeId>,
+    /// The selection: one item after a click, more after Ctrl or Shift
+    /// clicks. Trash, cleanups and copy act on all of them.
+    pub marked: HashSet<NodeId>,
     pub expansion: Expansion,
     pub rows: Vec<Row>,
     pub rows_dirty: bool,
@@ -175,6 +241,26 @@ pub struct OxTreeApp {
     pub sort: Sort,
     pub view: View,
     pub file_view: FileViewState,
+    pub tree_columns: Columns,
+    pub file_columns: Columns,
+    pub types_columns: Columns,
+    /// The File Types table, built the first time the view is shown.
+    pub types: Option<Arc<Vec<TypeRow>>>,
+    pub types_sort: (TypeSort, bool),
+    /// Duplicate counts per node for the mode they were built for.
+    pub dupes: Option<(DupMode, Arc<Vec<u32>>)>,
+    pub dupes_job: Option<Receiver<(DupMode, Vec<u32>)>>,
+    /// Available and total bytes of the scanned filesystem, from df.
+    pub free_space: Option<(u64, u64)>,
+    /// The scan root is a mount point, so its free space belongs in the
+    /// tree and the treemap; for a subdirectory it only goes in the status bar.
+    pub root_is_volume: bool,
+    pub free_job: Option<Receiver<Option<(u64, u64)>>>,
+    pub show_tile_names: bool,
+    pub export_dialog: Option<ExportDialog>,
+    /// A cleanup over a multi-selection runs once per item, in turn; these
+    /// are the items still to go.
+    pub cleanup_queue: Vec<(usize, NodeId)>,
 
     pub treemap_root: NodeId,
     pub treemap: TreemapState,
@@ -265,7 +351,7 @@ pub struct EarlyWork {
 
 /// Defaults for a scan from the environment; the settings file will own
 /// these.
-fn scan_defaults() -> (usize, bool) {
+pub fn scan_defaults() -> (usize, bool) {
     let threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4)
@@ -315,6 +401,7 @@ impl OxTreeApp {
             unreadable: 0,
             subtree_errors: HashSet::new(),
             selected: None,
+            marked: HashSet::new(),
             expansion: Expansion::default(),
             rows: Vec::new(),
             rows_dirty: true,
@@ -322,6 +409,19 @@ impl OxTreeApp {
             view_memory: None,
             view: View::Tree,
             file_view: FileViewState::default(),
+            tree_columns: Columns::new(&TREE_COLUMNS),
+            file_columns: Columns::new(&FILE_COLUMNS),
+            types_columns: Columns::new(&TYPES_COLUMNS),
+            types: None,
+            types_sort: (TypeSort::Size, false),
+            dupes: None,
+            dupes_job: None,
+            free_space: None,
+            root_is_volume: false,
+            free_job: None,
+            show_tile_names: true,
+            export_dialog: None,
+            cleanup_queue: Vec::new(),
             sort: Sort {
                 column: Column::Size,
                 ascending: false,
@@ -409,6 +509,7 @@ impl OxTreeApp {
     pub fn open_directory(&mut self, path: PathBuf) {
         self.tree = None;
         self.selected = None;
+        self.marked.clear();
         self.expansion.close_all(0);
         self.rows.clear();
         self.rows_dirty = true;
@@ -464,6 +565,14 @@ impl OxTreeApp {
             },
             self.wake.clone(),
         ));
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.free_job = Some(rx);
+        self.free_space = None;
+        self.root_is_volume = self.mounts.at(&path).is_some();
+        let p = path.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(oxtree_native::mounts::free_space(&p));
+        });
         self.scan_path = Some(path);
     }
 
@@ -543,6 +652,11 @@ impl OxTreeApp {
             }
         }
         self.tree = Some(Arc::new(tree));
+        self.marked = self.selected.into_iter().collect();
+        self.types = None;
+        self.dupes = None;
+        self.dupes_job = None;
+        self.cleanup_queue.clear();
         self.rows_dirty = true;
         self.file_view.dirty = true;
         self.last_elapsed = elapsed;
@@ -609,6 +723,25 @@ impl OxTreeApp {
         }
 
         self.pump_file_view(ctx);
+        if let Some(rx) = &self.dupes_job {
+            if let Ok((mode, counts)) = rx.try_recv() {
+                self.dupes_job = None;
+                self.dupes = Some((mode, Arc::new(counts)));
+                self.file_view.dirty = true;
+            }
+        }
+        if let Some(rx) = &self.free_job {
+            match rx.try_recv() {
+                Ok(free) => {
+                    self.free_job = None;
+                    self.free_space = free;
+                    self.rows_dirty = true;
+                    self.treemap.generation += 1;
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.free_job = None,
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+            }
+        }
 
         if let Some(launch) = &self.root_launch {
             if launch.is_ready() {
@@ -652,6 +785,7 @@ impl OxTreeApp {
                     }
                     self.treemap.texture_size = (result.width, result.height);
                     self.treemap.tiles = result.tiles;
+                    self.treemap.free_px = result.free_px;
                     self.treemap.rendered_generation = result.generation;
                     self.treemap.rebuilds += 1;
                     #[cfg(feature = "diagnostics")]
@@ -768,7 +902,11 @@ impl OxTreeApp {
                     false,
                 );
             }
-            if r != Refresh::No {
+            if let Some((index, node)) = self.cleanup_queue.pop() {
+                // The next item of a multi-selection; the rescan waits for
+                // the last one.
+                self.run_cleanup(index, node);
+            } else if r != Refresh::No {
                 // ponytail: any refresh policy rescans the whole tree; a
                 // subtree rescan spliced into the arena is the upgrade when
                 // scans are slow enough to notice.
@@ -791,9 +929,24 @@ impl OxTreeApp {
     }
 
     fn default_status(&self) -> String {
-        match (&self.tree, self.selected) {
-            (Some(tree), Some(n)) => format!("{}  {}", tree.path(n), format::size(tree.size(n))),
-            _ => String::new(),
+        let Some(tree) = &self.tree else {
+            return String::new();
+        };
+        if self.marked.len() > 1 {
+            let total: u64 = self
+                .marked
+                .iter()
+                .map(|&n| tree.size(n))
+                .fold(0, u64::saturating_add);
+            return format!(
+                "{} items selected  {}",
+                format::grouped(self.marked.len() as u64),
+                format::size(total)
+            );
+        }
+        match self.selected {
+            Some(n) => format!("{}  {}", tree.path(n), format::size(tree.size(n))),
+            None => String::new(),
         }
     }
 
@@ -809,8 +962,13 @@ impl OxTreeApp {
         let sort = self.sort;
         while let Some((node, depth)) = stack.pop() {
             self.rows.push(Row { node, depth });
-            if !self.expansion.is_open(node) {
+            if node == NO_NODE || !self.expansion.is_open(node) {
                 continue;
+            }
+            if node == tree.root() && self.root_is_volume && self.free_space.is_some() {
+                // Free space of the filesystem as the last row under the
+                // root, as WizTree lists it; `NO_NODE` marks it.
+                stack.push((NO_NODE, 1));
             }
             let mut kids: Vec<NodeId> = tree.children(node).collect();
             sort_children(&tree, &mut kids, sort);
@@ -820,10 +978,21 @@ impl OxTreeApp {
         }
     }
 
+    /// Node ids of the rows in order, for range selection.
+    pub fn row_order(&self) -> Vec<NodeId> {
+        self.rows
+            .iter()
+            .map(|r| r.node)
+            .filter(|&n| n != NO_NODE)
+            .collect()
+    }
+
     /// Select; with `reveal` the path to the node is opened temporarily
     /// and the tree scrolls to it (a treemap click, a File View jump).
     pub fn select(&mut self, node: NodeId, reveal: bool) {
         self.selected = Some(node);
+        self.marked.clear();
+        self.marked.insert(node);
         if reveal {
             if let Some(tree) = &self.tree {
                 self.expansion.reveal(tree, node);
@@ -833,6 +1002,103 @@ impl OxTreeApp {
         }
         self.status.text = self.default_status();
         self.status.until = None;
+    }
+
+    /// A click with modifiers: Ctrl toggles the item in the selection,
+    /// Shift selects from the current item to it in `order` (the rows as
+    /// shown), neither selects it alone.
+    pub fn select_in(&mut self, node: NodeId, mods: egui::Modifiers, order: &[NodeId]) {
+        if mods.shift {
+            let anchor = self.selected.unwrap_or(node);
+            let a = order.iter().position(|&n| n == anchor);
+            let b = order.iter().position(|&n| n == node);
+            if let (Some(a), Some(b)) = (a, b) {
+                let (lo, hi) = (a.min(b), a.max(b));
+                if !mods.ctrl {
+                    self.marked.clear();
+                }
+                self.marked
+                    .extend(order.get(lo..=hi).unwrap_or_default().iter().copied());
+                self.marked.insert(anchor);
+                self.status.text = self.default_status();
+                self.status.until = None;
+                return;
+            }
+        }
+        if mods.ctrl {
+            if !self.marked.remove(&node) {
+                self.marked.insert(node);
+            }
+            self.selected = Some(node);
+            self.status.text = self.default_status();
+            self.status.until = None;
+            return;
+        }
+        self.select(node, false);
+    }
+
+    /// A right click keeps a selection the item is part of.
+    pub fn select_for_menu(&mut self, node: NodeId) {
+        if self.marked.contains(&node) {
+            self.selected = Some(node);
+        } else {
+            self.select(node, false);
+        }
+    }
+
+    /// Ctrl+A: every row of the view.
+    pub fn select_all(&mut self, order: &[NodeId]) {
+        if order.is_empty() {
+            return;
+        }
+        self.marked = order.iter().copied().collect();
+        if self.selected.is_none_or(|s| !self.marked.contains(&s)) {
+            self.selected = order.first().copied();
+        }
+        self.status.text = self.default_status();
+        self.status.until = None;
+    }
+
+    /// The Reset button: the views as at the start, with the tree, the
+    /// current directory and the treemap position kept.
+    pub fn reset_views(&mut self) {
+        self.close_all_levels();
+        self.sort = Sort {
+            column: Column::Size,
+            ascending: false,
+        };
+        self.file_view = FileViewState::default();
+        self.types_sort = (TypeSort::Size, false);
+        self.tree_columns.reset();
+        self.file_columns.reset();
+        self.types_columns.reset();
+        self.treemap_zoom_reset();
+    }
+
+    /// Open every directory with children.
+    pub fn expand_all(&mut self) {
+        self.expand_to_level(u32::MAX);
+    }
+
+    /// Open directories above `level` levels below the root, close the rest.
+    pub fn expand_to_level(&mut self, level: u32) {
+        let Some(tree) = self.tree.clone() else {
+            return;
+        };
+        self.expansion.close_all(tree.root());
+        let mut stack: Vec<(NodeId, u32)> = vec![(tree.root(), 0)];
+        while let Some((node, depth)) = stack.pop() {
+            if depth > 0 {
+                if depth > level || tree.child_count(node) == 0 {
+                    continue;
+                }
+                self.expansion.open_by_hand(&tree, node);
+            }
+            for c in tree.children(node) {
+                stack.push((c, depth + 1));
+            }
+        }
+        self.rows_dirty = true;
     }
 
     pub fn toggle_expand(&mut self, node: NodeId) {
@@ -857,9 +1123,66 @@ impl OxTreeApp {
     pub fn close_all_levels(&mut self) {
         if let Some(tree) = &self.tree {
             self.expansion.close_all(tree.root());
-            self.selected = Some(tree.root());
+            self.select(tree.root(), false);
         }
         self.rows_dirty = true;
+    }
+
+    // ------------------------------------------------------------ file types
+
+    /// Build the File Types table if the tree changed since the last one.
+    pub fn ensure_types(&mut self) {
+        if self.types.is_some() {
+            return;
+        }
+        let Some(tree) = &self.tree else { return };
+        self.types = Some(Arc::new(oxtree_core::types::file_types(
+            tree,
+            &self.categorizer,
+        )));
+    }
+
+    pub fn set_types_sort(&mut self, sort: TypeSort) {
+        if self.types_sort.0 == sort {
+            self.types_sort.1 = !self.types_sort.1;
+        } else {
+            self.types_sort = (sort, matches!(sort, TypeSort::Ext | TypeSort::Category));
+        }
+    }
+
+    /// Double click on a type: the File View listing those files.
+    pub fn show_type_in_file_view(&mut self, query: String) {
+        self.file_view.search = query;
+        self.file_view.match_path = false;
+        self.file_view.dirty = true;
+        self.view = View::Files;
+    }
+
+    /// Duplicate counts for the File View's mode, started on a thread when
+    /// missing; `None` until they exist.
+    fn dupes_for(&mut self, ctx: &Context, mode: DupMode) -> Option<Arc<Vec<u32>>> {
+        if mode == DupMode::Off {
+            return Some(Arc::new(Vec::new()));
+        }
+        if let Some((m, counts)) = &self.dupes {
+            if *m == mode {
+                return Some(counts.clone());
+            }
+        }
+        if self.dupes_job.is_none() {
+            let tree = self.tree.clone()?;
+            let (tx, rx) = std::sync::mpsc::channel();
+            self.dupes_job = Some(rx);
+            let repaint = ctx.clone();
+            std::thread::Builder::new()
+                .name("oxtree-dupes".into())
+                .spawn(move || {
+                    let _ = tx.send((mode, oxtree_core::dupes::duplicate_counts(&tree, mode)));
+                    repaint.request_repaint();
+                })
+                .ok();
+        }
+        None
     }
 
     pub fn set_sort(&mut self, column: Column) {
@@ -883,11 +1206,15 @@ impl OxTreeApp {
         if !self.file_view.dirty || self.file_view.job.is_some() {
             return;
         }
-        self.file_view.dirty = false;
         let Some(tree) = self.tree.clone() else {
+            self.file_view.dirty = false;
             self.file_view.rows.clear();
             return;
         };
+        let Some(dupes) = self.dupes_for(ctx, self.file_view.dup_mode) else {
+            return;
+        };
+        self.file_view.dirty = false;
         let fv = &mut self.file_view;
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -915,27 +1242,57 @@ impl OxTreeApp {
         std::thread::Builder::new()
             .name("oxtree-search".into())
             .spawn(move || {
-                let rows = flat_list_filtered(&tree, include_dirs, sort, ascending, max, |n| {
-                    let Some(q) = &query else { return true };
-                    // ponytail: the path is built per node when the query
-                    // needs it; a shared path buffer is the upgrade if a
-                    // million-file path search ever feels slow.
-                    let path = if needs_path {
-                        tree.path(n)
-                    } else {
-                        String::new()
-                    };
-                    q.matches(
-                        &Item {
-                            name: tree.name(n),
-                            path: &path,
-                            size: tree.size(n),
-                            mtime: tree.mtime(n),
-                            is_dir: tree.is_dir_like(n),
-                        },
-                        match_path,
-                    )
-                });
+                let dup_only = !dupes.is_empty();
+                let rows = flat_list_filtered(
+                    &tree,
+                    include_dirs,
+                    sort,
+                    ascending,
+                    if dup_only { 0 } else { max },
+                    |n| {
+                        if dup_only && dupes.get(n as usize).copied().unwrap_or(0) < 2 {
+                            return false;
+                        }
+                        let Some(q) = &query else { return true };
+                        // ponytail: the path is built per node when the query
+                        // needs it; a shared path buffer is the upgrade if a
+                        // million-file path search ever feels slow.
+                        let path = if needs_path {
+                            tree.path(n)
+                        } else {
+                            String::new()
+                        };
+                        q.matches(
+                            &Item {
+                                name: tree.name(n),
+                                path: &path,
+                                size: tree.size(n),
+                                mtime: tree.mtime(n),
+                                is_dir: tree.is_dir_like(n),
+                            },
+                            match_path,
+                        )
+                    },
+                );
+                let rows = if dup_only {
+                    // Groups together, the group with the most wasted space
+                    // first, as WizTree orders them.
+                    let mut rows = rows;
+                    rows.sort_by_cached_key(|&n| {
+                        let count = dupes.get(n as usize).copied().unwrap_or(0) as u64;
+                        (
+                            std::cmp::Reverse(count.saturating_mul(tree.size(n))),
+                            tree.name(n).to_lowercase(),
+                            std::cmp::Reverse(tree.size(n)),
+                        )
+                    });
+                    if max > 0 {
+                        rows.truncate(max);
+                    }
+                    rows
+                } else {
+                    rows
+                };
                 let _ = tx.send((generation, rows));
                 repaint.request_repaint();
             })
@@ -1080,13 +1437,33 @@ impl OxTreeApp {
         let shading = self.shading;
         let threads = self.threads;
         let ctx = ctx.clone();
+        // Free space of the volume as a strip on the right of the whole
+        // map, sized like a tile: its share of used plus free.
+        let free_px = match self.free_space {
+            Some((avail, _)) if self.root_is_volume && root == tree.root() && avail > 0 => {
+                let used = tree.size(root) as f64;
+                let share = avail as f64 / (used + avail as f64);
+                let px = (width as f64 * share).round() as usize;
+                if px >= theme::MIN_TILE_SIZE as usize && px < width {
+                    px
+                } else {
+                    0
+                }
+            }
+            _ => 0,
+        };
         let (tx, rx) = std::sync::mpsc::channel();
         self.treemap.job = Some(rx);
         std::thread::Builder::new()
             .name("oxtree-treemap".into())
             .spawn(move || {
                 let started = Instant::now();
-                let rect = oxtree_core::layout::Rect::new(0.0, 0.0, width as f64, height as f64);
+                let rect = oxtree_core::layout::Rect::new(
+                    0.0,
+                    0.0,
+                    (width - free_px) as f64,
+                    height as f64,
+                );
                 let tiles = oxtree_core::layout::layout(&tree, root, rect, theme::MIN_TILE_SIZE);
                 let color_of = |n: NodeId| {
                     categorizer
@@ -1104,6 +1481,7 @@ impl OxTreeApp {
                     height,
                     tiles: Arc::new(tiles),
                     pixels,
+                    free_px,
                 });
                 ctx.request_repaint();
             })
@@ -1112,43 +1490,146 @@ impl OxTreeApp {
 
     // ------------------------------------------------------------ actions
 
+    /// The selected items in tree order, the current item first when it
+    /// is one of them.
+    pub fn selection(&self) -> Vec<NodeId> {
+        let mut v: Vec<NodeId> = self.marked.iter().copied().collect();
+        v.sort_unstable();
+        if let Some(s) = self.selected {
+            if let Some(i) = v.iter().position(|&n| n == s) {
+                v.remove(i);
+                v.insert(0, s);
+            } else if v.is_empty() {
+                v.push(s);
+            }
+        }
+        v
+    }
+
     pub fn copy_path(&mut self, ctx: &Context) {
-        let Some((tree, n)) = self.tree.clone().zip(self.selected) else {
+        let Some(tree) = self.tree.clone() else {
             return;
         };
-        let path = tree.path(n);
-        ctx.copy_text(path.clone());
-        self.set_status(format!("Copied to clipboard: {path}"), false);
+        let paths: Vec<String> = self.selection().iter().map(|&n| tree.path(n)).collect();
+        if paths.is_empty() {
+            return;
+        }
+        let text = paths.join("\n");
+        ctx.copy_text(text);
+        let msg = match paths.as_slice() {
+            [one] => format!("Copied to clipboard: {one}"),
+            many => format!("Copied {} paths to clipboard", many.len()),
+        };
+        self.set_status(msg, false);
+    }
+
+    /// Edit, Copy Tree to Clipboard: the rows as shown, indented.
+    pub fn copy_tree_text(&mut self, ctx: &Context) {
+        let Some(tree) = self.tree.clone() else {
+            return;
+        };
+        let text = oxtree_core::export::tree_text(
+            &tree,
+            self.rows
+                .iter()
+                .filter(|r| r.node != NO_NODE)
+                .map(|r| (r.node, r.depth)),
+        );
+        ctx.copy_text(text);
+        self.set_status(
+            format!("Copied {} rows to clipboard", self.rows.len()),
+            false,
+        );
+    }
+
+    pub fn export_csv(&mut self, dialog: &ExportDialog) {
+        let Some(tree) = self.tree.clone() else {
+            return;
+        };
+        let opts = ExportOptions {
+            separator: if dialog.tsv { '\t' } else { ',' },
+            max_depth: dialog.max_depth.trim().parse().ok(),
+            utc_offset: if dialog.utc { 0 } else { self.utc_offset },
+            percent_of_parent: dialog.percent_of_parent,
+        };
+        let text = oxtree_core::export::csv(&tree, dialog.root, &opts, |_| true);
+        let path = dialog.path.trim();
+        match std::fs::write(path, text) {
+            Ok(()) => self.set_status(format!("Exported {path}"), false),
+            Err(e) => self.show_error(format!("Cannot write {path}: {e}")),
+        }
+    }
+
+    /// Items the trash and the cleanups may touch: the selection without
+    /// the root and the `<Files>` entries.
+    fn actionable(&self) -> Vec<NodeId> {
+        let Some(tree) = &self.tree else {
+            return Vec::new();
+        };
+        self.selection()
+            .into_iter()
+            .filter(|&n| n != tree.root() && tree.kind(n) != Kind::DotEntry)
+            .collect()
+    }
+
+    pub fn can_trash(&self) -> bool {
+        self.scan.is_none() && self.trash_job.is_none() && !self.actionable().is_empty()
     }
 
     pub fn move_to_trash(&mut self) {
-        let Some((tree, n)) = self.tree.clone().zip(self.selected) else {
+        let Some(tree) = self.tree.clone() else {
             return;
         };
-        if n == tree.root() || tree.kind(n) == Kind::DotEntry || self.trash_job.is_some() {
+        let items = self.actionable();
+        if items.is_empty() || self.trash_job.is_some() {
             return;
         }
-        let path = tree.path(n);
+        let paths: Vec<String> = items.iter().map(|&n| tree.path(n)).collect();
         let (tx, rx) = std::sync::mpsc::channel();
         self.trash_job = Some(rx);
         std::thread::spawn(move || {
-            let _ = tx.send(oxtree_native::trash::move_to_trash(&path).map(|()| path));
+            for (done, p) in paths.iter().enumerate() {
+                if let Err(e) = oxtree_native::trash::move_to_trash(p) {
+                    let _ = tx.send(Err(if done > 0 {
+                        format!("{e} ({done} moved before it)")
+                    } else {
+                        e
+                    }));
+                    return;
+                }
+            }
+            let _ = tx.send(Ok(match paths.as_slice() {
+                [one] => one.clone(),
+                many => format!("{} items", many.len()),
+            }));
         });
     }
 
     pub fn cleanup_applies(&self, index: usize) -> bool {
-        let (Some(tree), Some(n), Some(c)) = (&self.tree, self.selected, self.cleanups.get(index))
-        else {
+        let (Some(tree), Some(c)) = (&self.tree, self.cleanups.get(index)) else {
             return false;
         };
-        c.active && c.works_for(tree.kind(n))
+        c.active && self.selection().iter().any(|&n| c.works_for(tree.kind(n)))
+    }
+
+    /// The selected items this cleanup works for.
+    pub fn cleanup_targets(&self, index: usize) -> Vec<NodeId> {
+        let (Some(tree), Some(c)) = (&self.tree, self.cleanups.get(index)) else {
+            return Vec::new();
+        };
+        self.selection()
+            .into_iter()
+            .filter(|&n| c.works_for(tree.kind(n)))
+            .collect()
     }
 
     pub fn request_cleanup(&mut self, index: usize) {
         if !self.cleanup_applies(index) {
             return;
         }
-        let Some(n) = self.selected else { return };
+        let Some(&n) = self.cleanup_targets(index).first() else {
+            return;
+        };
         let ask = self
             .cleanups
             .get(index)
@@ -1157,8 +1638,18 @@ impl OxTreeApp {
         if ask {
             self.confirm = Some(PendingCleanup { index, node: n });
         } else {
-            self.run_cleanup(index, n);
+            self.run_cleanup_on_selection(index);
         }
+    }
+
+    /// Run the cleanup for every selected item it works for, one after
+    /// the other; the output window shows the one running.
+    pub fn run_cleanup_on_selection(&mut self, index: usize) {
+        let mut targets = self.cleanup_targets(index);
+        targets.reverse();
+        let Some(first) = targets.pop() else { return };
+        self.cleanup_queue = targets.into_iter().map(|n| (index, n)).collect();
+        self.run_cleanup(index, first);
     }
 
     pub fn run_cleanup(&mut self, index: usize, node: NodeId) {

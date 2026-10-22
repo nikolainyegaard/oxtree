@@ -93,6 +93,27 @@ fn bench(path: PathBuf) {
         text.len(),
         back.is_ok()
     ));
+    let t = Instant::now();
+    let types = oxtree_core::types::file_types(&tree, &categorizer);
+    out(format!(
+        "types    {:>8.1} ms  {} extensions",
+        t.elapsed().as_secs_f64() * 1000.0,
+        types.len()
+    ));
+    let t = Instant::now();
+    let dupes = oxtree_core::dupes::duplicate_counts(&tree, oxtree_core::dupes::DupMode::NameSize);
+    out(format!(
+        "dupes    {:>8.1} ms  {} files with a duplicate by name and size",
+        t.elapsed().as_secs_f64() * 1000.0,
+        dupes.iter().filter(|&&c| c > 1).count()
+    ));
+    let t = Instant::now();
+    let csv = oxtree_core::export::csv(&tree, 0, &Default::default(), |_| true);
+    out(format!(
+        "csv      {:>8.1} ms  {} bytes",
+        t.elapsed().as_secs_f64() * 1000.0,
+        csv.len()
+    ));
     // Search: a name query, then the same query against whole paths, which
     // builds a path string per node.
     for (label, match_path) in [("name", false), ("path", true)] {

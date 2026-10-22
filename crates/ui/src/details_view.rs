@@ -12,6 +12,23 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
         ui.label(egui::RichText::new("No current item").weak());
         return;
     };
+    if app.marked.len() > 1 {
+        let total: u64 = app
+            .marked
+            .iter()
+            .map(|&m| tree.size(m))
+            .fold(0, u64::saturating_add);
+        ui.label(
+            egui::RichText::new(format!(
+                "{} items selected, {}",
+                format::grouped(app.marked.len() as u64),
+                format::size(total)
+            ))
+            .strong(),
+        );
+        ui.label(egui::RichText::new("Current item:").weak());
+        ui.add_space(4.0);
+    }
     let kind = tree.kind(n);
     let name = if n == tree.root() {
         tree.root_path().to_string()
@@ -85,6 +102,19 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
                 row(ui, "Of Parent:", format::percent(p));
             }
         });
+    if n == tree.root() {
+        if let Some((avail, size)) = app.free_space {
+            ui.add_space(6.0);
+            ui.label(
+                egui::RichText::new(format!(
+                    "Volume: {} free of {}",
+                    format::size(avail),
+                    format::size(size)
+                ))
+                .weak(),
+            );
+        }
+    }
     ui.add_space(8.0);
     ui.label(egui::RichText::new(tree.path(n)).small().weak());
 }

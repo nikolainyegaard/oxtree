@@ -18,7 +18,19 @@ const GO_UP: KeyboardShortcut = KeyboardShortcut::new(Modifiers::ALT, Key::Arrow
 const CLOSE_ALL: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::W);
 const VIEW_TREE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Num1);
 const VIEW_FILES: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Num2);
+const VIEW_TYPES: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Num3);
+const VIEW_TYPES_F8: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F8);
 const FIND: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::F);
+const EXPAND_ALL: KeyboardShortcut = KeyboardShortcut::new(Modifiers::SHIFT, Key::F4);
+const CTRL_ALT: Modifiers = Modifiers {
+    alt: true,
+    ctrl: true,
+    shift: false,
+    mac_cmd: false,
+    command: false,
+};
+const EXPORT: KeyboardShortcut = KeyboardShortcut::new(CTRL_ALT, Key::E);
+const COPY_TREE: KeyboardShortcut = KeyboardShortcut::new(CTRL_ALT, Key::C);
 
 pub fn handle_shortcuts(app: &mut OxTreeApp, ctx: &egui::Context) {
     if ctx.memory(|m| m.focused().is_some()) {
@@ -33,6 +45,13 @@ pub fn handle_shortcuts(app: &mut OxTreeApp, ctx: &egui::Context) {
     }
     if pressed(&QUIT) {
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+    // The three-key shortcuts before the two-key ones they extend.
+    if pressed(&EXPORT) {
+        open_export(app, app.tree.as_ref().map(|t| t.root()));
+    }
+    if pressed(&COPY_TREE) {
+        app.copy_tree_text(ctx);
     }
     if pressed(&COPY) {
         app.copy_path(ctx);
@@ -63,6 +82,12 @@ pub fn handle_shortcuts(app: &mut OxTreeApp, ctx: &egui::Context) {
     }
     if pressed(&VIEW_FILES) {
         app.view = View::Files;
+    }
+    if pressed(&VIEW_TYPES) || pressed(&VIEW_TYPES_F8) {
+        app.view = View::Types;
+    }
+    if pressed(&EXPAND_ALL) {
+        app.expand_all();
     }
     if pressed(&FIND) {
         app.focus_search();
@@ -95,31 +120,76 @@ fn open_dialog(app: &mut OxTreeApp) {
     }
 }
 
+fn open_export(app: &mut OxTreeApp, root: Option<u32>) {
+    let Some(root) = root else { return };
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    let name = app
+        .tree
+        .as_ref()
+        .map(|t| {
+            if root == t.root() {
+                std::path::Path::new(t.root_path())
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+            } else {
+                t.name(root).to_string()
+            }
+        })
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| "root".into());
+    app.export_dialog = Some(crate::app::ExportDialog {
+        root,
+        path: format!("{home}/{name}.csv"),
+        tsv: false,
+        max_depth: String::new(),
+        utc: false,
+        percent_of_parent: false,
+    });
+}
+
 /// Right-click menu for the tree and the treemap: the Edit items, the
 /// cleanups and the treemap actions, all acting on the current selection.
 pub fn context_menu(app: &mut OxTreeApp, ui: &mut Ui) {
     let ctx = ui.ctx().clone();
     ui.set_min_width(220.0);
     let has_sel = app.selected.is_some();
+    let many = app.marked.len() > 1;
     if ui
         .add_enabled(
             has_sel,
-            egui::Button::new("Copy Path to Clipboard").shortcut_text(ctx.format_shortcut(&COPY)),
+            egui::Button::new(if many {
+                "Copy Paths to Clipboard"
+            } else {
+                "Copy Path to Clipboard"
+            })
+            .shortcut_text(ctx.format_shortcut(&COPY)),
         )
         .clicked()
     {
         app.copy_path(&ctx);
         ui.close();
     }
-    let can_trash = app.selected.map(|n| n != 0).unwrap_or(false) && app.scan.is_none();
     if ui
         .add_enabled(
-            can_trash,
+            app.can_trash(),
             egui::Button::new("Move to Trash").shortcut_text(ctx.format_shortcut(&TRASH)),
         )
         .clicked()
     {
         app.move_to_trash();
+        ui.close();
+    }
+    let dir_selected = app
+        .tree
+        .as_ref()
+        .zip(app.selected)
+        .is_some_and(|(t, n)| t.is_dir_like(n) && t.kind(n) != oxtree_core::Kind::DotEntry);
+    if ui
+        .add_enabled(dir_selected, egui::Button::new("Export Subtree to CSV..."))
+        .clicked()
+    {
+        open_export(app, app.selected);
         ui.close();
     }
     ui.separator();
@@ -256,6 +326,17 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
             }
             ui.separator();
             if ui
+                .add_enabled(
+                    app.tree.is_some(),
+                    egui::Button::new("Export to CSV...").shortcut_text(ctx.format_shortcut(&EXPORT)),
+                )
+                .clicked()
+            {
+                open_export(app, app.tree.as_ref().map(|t| t.root()));
+                ui.close();
+            }
+            ui.separator();
+            if ui
                 .add(egui::Button::new("Quit").shortcut_text(ctx.format_shortcut(&QUIT)))
                 .clicked()
             {
@@ -275,10 +356,21 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
                 app.copy_path(&ctx);
                 ui.close();
             }
-            let can_trash = app.selected.map(|n| n != 0).unwrap_or(false) && app.scan.is_none();
             if ui
                 .add_enabled(
-                    can_trash,
+                    app.tree.is_some(),
+                    egui::Button::new("Copy Tree to Clipboard")
+                        .shortcut_text(ctx.format_shortcut(&COPY_TREE)),
+                )
+                .on_hover_text("The rows as shown, names and sizes, indented")
+                .clicked()
+            {
+                app.copy_tree_text(&ctx);
+                ui.close();
+            }
+            if ui
+                .add_enabled(
+                    app.can_trash(),
                     egui::Button::new("Move to Trash").shortcut_text(ctx.format_shortcut(&TRASH)),
                 )
                 .clicked()
@@ -300,6 +392,15 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
                 .clicked()
             {
                 app.view = View::Files;
+                ui.close();
+            }
+            if ui
+                .add(
+                    egui::Button::new("File Types").shortcut_text(ctx.format_shortcut(&VIEW_TYPES)),
+                )
+                .clicked()
+            {
+                app.view = View::Types;
                 ui.close();
             }
             if ui
@@ -335,6 +436,12 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
                 app.show_details = !app.show_details;
                 ui.close();
             }
+            if ui
+                .checkbox(&mut app.show_tile_names, "Names on Treemap Tiles")
+                .changed()
+            {
+                ui.close();
+            }
             ui.separator();
             if ui
                 .add(
@@ -346,6 +453,24 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
                 app.close_all_levels();
                 ui.close();
             }
+            if ui
+                .add(
+                    egui::Button::new("Expand All Tree Levels")
+                        .shortcut_text(ctx.format_shortcut(&EXPAND_ALL)),
+                )
+                .clicked()
+            {
+                app.expand_all();
+                ui.close();
+            }
+            ui.menu_button("Expand Tree to Level", |ui| {
+                for level in 1..=9u32 {
+                    if ui.button(format!("Level {level}")).clicked() {
+                        app.expand_to_level(level);
+                        ui.close();
+                    }
+                }
+            });
             ui.separator();
             if ui
                 .add(

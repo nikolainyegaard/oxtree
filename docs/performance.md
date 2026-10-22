@@ -8,7 +8,7 @@ Checked in the change checklist. A change that moves one says so in the commit b
 
 | Measure | Budget | 0.1.0 | How to measure |
 |---------|--------|-------|----------------|
-| Stripped release binary | 10 MB | 8.8 MB (plain build; the diagnostics build is 9.1 MB) | `ls -l target/release/oxtree` |
+| Stripped release binary | 10 MB | 9.1 MB (plain build; the diagnostics build is 9.3 MB) | `ls -l target/release/oxtree` |
 | Scan of /usr, 352k nodes, warm, on mains | 150 ms | 125 ms (250 ms on battery with the powersave governor) | `target/release/oxtree-bench /usr` from a `--features diagnostics` build |
 | Treemap layout plus render at 1900x600 | 15 ms | 1.7 + 7.7 ms | same |
 | First frame, performance power profile | 50 ms | 34 ms (86 to 90 ms in the balanced profile on battery) | `target/release/oxtree /usr 2>&1 \| grep 'first frame'`; stages with `OXTREE_STARTUP=1`; check `/sys/firmware/acpi/platform_profile` first |
@@ -29,6 +29,9 @@ RSS is over budget in 0.1.0. See the memory section for where it goes and the pl
 | Cache write / parse, 352k nodes | 89 ms / 111 ms | Text format, 14.8 MB |
 | Search "lib >1k" over 357k nodes, by name | 18 ms | Substring compare in place on ASCII names, no allocation per node; `--bench` prints it |
 | Search, the same query by path | 95 ms | Builds a path string per node; 816k nodes in a home directory take 220 to 260 ms. The list is built on a worker thread, so typing never waits: a keystroke during a build marks the list dirty and one more build follows |
+| File Types table, 357k nodes | 10 ms | One hash map by extension; built on the UI thread when the tab is first shown |
+| Duplicate counts by name and size | 49 ms | Two passes over a hash map; built on a thread when the mode is chosen |
+| CSV export of /usr | 166 ms | 35 MB of text, one path string per node; on the UI thread, once per export |
 | First frame | 75 ms | eframe on glow under Wayland; the spike measured 43 ms without menus and panels |
 
 Installed QDirStat 2.0 for comparison: read of /usr logged at 41.6 s, RSS 97 MB after that scan, 1.8 MB binary plus five Qt6 libraries.
@@ -62,7 +65,7 @@ Facts behind the walker, so nobody re-derives them:
 - std's `DirEntry::metadata` on Linux already stats relative to the directory fd with `AT_SYMLINK_NOFOLLOW`, and `DirEntry::file_type` reads `d_type`. Hand-rolled getdents64 and statx gain nothing; the spacebadger project measured a 64 KiB getdents buffer within noise and io_uring statx 1.5 to 3x slower warm, because the kernel sends statx to io-wq threads.
 - Sorting entries by inode number before stat helps ext4 on rotating disks (Ts'o's advice, adopted by gnulib's fts) and nothing else. Not implemented; conditional on `ROTA` from sysfs if anyone with an HDD asks.
 - dua-cli replaced jwalk and rayon with a crate-local work-stealing walker on std threads for up to 40% more throughput. OxTree's shared `Mutex<Vec>` queue is the simple version of that; a per-worker deque is the next step if the lock shows up in a profile.
-- Hard links: not deduplicated yet. The fix is a `(dev, ino)` set consulted only when `nlink > 1`.
+- Hard links: each link of a regular file carries `blocks * 512 / nlink`, so the totals count the file once and the result does not depend on which worker met which link first. A `(dev, ino)` set would give the first link the full size but make the tree differ between runs.
 
 ## Treemap design
 

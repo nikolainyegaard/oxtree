@@ -1,24 +1,24 @@
 # OxTree vs WizTree: target-app parity
 
-> **Last reviewed:** 2026-10-22 · **Last updated:** 2026-10-22 · **Change:** crossing local filesystems is the default, mounted filesystem list in Open Directory, entered mount points marked; a Ports section pins the Windows MFT reader and the macOS branch; earlier the same day: search landed (WizTree syntax, name or path mode, regex via regex-lite, highlighted matches, Ctrl+F); earlier the same day: File View landed (flat list, top-N cap, folders toggle, Ctrl+1 and Ctrl+2); earlier the same day: first version, inventory taken from WizTree's guide, feature page and version history · **Target:** WizTree 4.33 for Windows (16 September 2026), with WizTreeMac 1.00 as the reference for what WizTree does without an MFT
+> **Last reviewed:** 2026-10-22 · **Last updated:** 2026-10-22 · **Change:** File Types view, CSV export and headless export, copy tree to clipboard, multi-selection, duplicates, names on tiles, free space in tree, treemap and status bar, hard links shared, Expand All and expand to level, resizable columns, alternating rows, sideways scrolling, the Reset button; earlier the same day: crossing local filesystems is the default, mounted filesystem list in Open Directory, entered mount points marked; a Ports section pins the Windows MFT reader and the macOS branch; earlier the same day: search landed (WizTree syntax, name or path mode, regex via regex-lite, highlighted matches, Ctrl+F); earlier the same day: File View landed (flat list, top-N cap, folders toggle, Ctrl+1 and Ctrl+2); earlier the same day: first version, inventory taken from WizTree's guide, feature page and version history · **Target:** WizTree 4.33 for Windows (16 September 2026), with WizTreeMac 1.00 as the reference for what WizTree does without an MFT
 
 The authoritative answer to "how close is OxTree to WizTree, and what is left". Each row is a WizTree feature, what OxTree has for it today, and what closing the gap touches. The ranked list of what to build next is at the end. QDirStat is the reference for behaviour and defaults where WizTree has nothing to say; it is not the target.
 
-## Headline (2026-10-22, OxTree 0.1.0, `main` at 0ed3c34)
+## Headline (2026-10-22, OxTree 0.1.0, `main` after 15ca189)
 
 | Number | Value | How |
 |---|---|---|
-| **Feature breadth** (does each WizTree feature exist?) | **49%** | Done rows plus half of Partial rows, over the 96 rows that apply on Linux; counted from the tables below |
-| **Rows** | 38 done, 19 partial, 39 missing, 6 not applicable, 3 declined | counted over the status column of the tables below |
-| **Stage** | **alpha** | Scan, tree, treemap, cleanups and trash work end to end; everything WizTree calls the File View does not exist yet |
+| **Feature breadth** (does each WizTree feature exist?) | **70%** | Done rows plus half of Partial rows, over the 97 rows that apply on Linux; counted from the tables below |
+| **Rows** | 59 done, 17 partial, 21 missing, 6 not applicable, 3 declined | counted over the status column of the tables below |
+| **Stage** | **beta** | Scan, tree, treemap, File View, File Types, duplicates, search, export, multi-selection, cleanups and trash work end to end; what is left is settings, rename and the smaller items |
 
-The number is honest about breadth only. Where OxTree has a feature it is usually complete, because the views were built from QDirStat, which is deeper than WizTree in those areas. Where it is missing, it is missing entirely: there is no flat file list, no search, no file type view and no export.
+The number is honest about breadth only. Where OxTree has a feature it is usually complete, because the views were built from QDirStat, which is deeper than WizTree in those areas. What is missing is mostly settings: nothing is persisted yet, so the choices made in the strips reset with the window.
 
 ## Target measured
 
 - **WizTree 4.33** as described by the vendor's guide (Advanced File Search, CSV export, clipboard, command line export, MFT dump, installer options), the feature page, the "what's new" history back to 1.01, and the WizTreeMac comparison. Not run: WizTree is Windows and macOS only. Labels are the vendor's.
 - **Not applicable** marks what has no Linux equivalent or no equivalent in a GPL desktop app: the NTFS Master File Table read, MTP phone scanning, Windows Explorer integration, the installer, the supporter code. **Declined** marks what OxTree will not do on purpose, with the reason.
-- **OxTree** as of commit 0ed3c34 on 2026-10-22, from the code and from running it.
+- **OxTree** as of the working tree after commit 15ca189 on 2026-10-22, from the code and from running it.
 
 ## Status legend
 
@@ -41,9 +41,9 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 | Scan network drives and non-NTFS volumes | Partial | Any mounted filesystem can be the root; crossing into network mounts during a scan is refused by the mount rules | Nothing to change unless someone asks to cross into NFS |
 | Cross into other local filesystems during a scan | Done | On by default, as `du` and `ncdu` do; kernel tables and network mounts stay leaves, and removable media under /run with them. Checkbox in Open Directory; `OXTREE_CROSS_FILESYSTEMS=0` for the old behaviour until it is a saved setting. Entered mount points keep a disk badge on their folder icon and show their filesystem in the details panel | Persist the checkbox once the settings file exists |
 | Scan phones and cameras over MTP | N/A | | GVFS exposes MTP as a mount, so a scan of /run/user/*/gvfs would work; not planned |
-| Hard-linked files counted once, allocated totals match the OS | Missing | Each link counted | Track (dev, inode) for nlink > 1 in the walker, keep the first; QDirStat does the same |
+| Hard-linked files counted once, allocated totals match the OS | Done | Each link of a file carries an equal share of its allocated size, so the totals count the file once whichever link the walk met first; links outside the scanned directory make a file look smaller than it is, as in QDirStat | |
 | Allocated size and file size both available | Partial | Allocated size only (`st_blocks * 512`); the details panel shows it under both labels | A second u64 per node (8 MB per million files) and a column toggle |
-| Total, free and reserved space of the volume | Partial | Size, used and free per mounted filesystem in the Open Directory list, from `df` | A free-space row in the tree and a grey area in the treemap |
+| Total, free and reserved space of the volume | Done | Free and total space of the scanned filesystem in the status bar and the details panel for every scan; a `<Free Space>` row in the tree and a grey strip in the treemap when the scanned directory is a mount point, from `df` | Reserved space is not shown separately |
 | Include and exclude filters applied during the scan | Partial | Exclude by directory name only, default `.snapshot` | Glob patterns on full paths, from the settings file; the glob matcher exists |
 | File system monitoring, live updates | Declined | | inotify on a million directories is not viable; F5 and the rescan after cleanups cover it |
 | Drive list with automatic refresh on USB insert | Done | Open Directory lists every mounted local filesystem with type, size, used and free and a Scan button; reloaded each time the dialog opens | |
@@ -55,18 +55,18 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 
 | WizTree feature | Status | OxTree today | What closing it touches |
 |---|---|---|---|
-| Tree with Size, Allocated, Modified, Files, Folders, % of Parent columns | Partial | Name, Subtree Percentage, %, Size, Items, Files, Subdirs, Last Modified; no Attributes column, Size is allocated size | Attributes become Permissions, which the details panel already shows; add as a column |
+| Tree with Size, Allocated, Modified, Files, Folders, % of Parent columns | Partial | Name, Subtree Percentage, %, Size, Items, Files, Subdirs, Last Modified, resizable by dragging the header dividers; no Attributes column, Size is allocated size | Attributes become Permissions, which the details panel already shows; add as a column |
 | Percent bar per row | Done | QDirStat's bar, coloured by depth | |
 | Sort by any column, sorted column highlighted | Done | Click a header; indicator triangle on the sorted column | |
-| Expand All, reset tree (F4), expand to a level | Partial | Close All Tree Levels (Ctrl+W); no Expand All, no expand-to-level | QDirStat's Expand Tree to Level 0 to 9 menu; cheap, rows are rebuilt from the expanded set |
+| Expand All, reset tree (F4), expand to a level | Done | Close All Tree Levels (Ctrl+W), Expand All Tree Levels (Shift+F4), Expand Tree to Level 1 to 9 in the View menu; the Reset button in the tab strip closes the tree and clears every filter | |
 | Parent and child navigation (F6, F7) | Done | Alt+Up, Left and Right arrows, Enter | |
-| Free space shown as a row in the tree | Missing | | Same statvfs work as the volume sizes |
+| Free space shown as a row in the tree | Done | `<Free Space>` as the last row under the root, with its share of the volume as a bar, when the scanned directory is a mount point | |
 | Deleted items marked until the next rescan | N/A | OxTree rescans after every delete, so the item is simply gone | |
 | Separate File Name column, header show and hide (Ctrl+H) | Missing | | Low value; header hide is a one-liner if asked |
 | Adjustable row height, font size with Ctrl+wheel | Missing | | egui zoom factor is a one-liner for Ctrl+wheel; row height from the settings file |
-| Grid lines and alternating row colours | Missing | | A painter call per row; a setting |
-| Values too wide for a cell marked with a red edge | Missing | | Columns are fixed width and sized for the formats; revisit with resizable columns |
-| Status bar with selection totals, file count, hovered name | Partial | Selection path and size on the left, item count and total on the right; no multi-selection totals | Comes with multi-selection |
+| Grid lines and alternating row colours | Done | Alternating row colours in all three tables | A setting once there is a settings file |
+| Values too wide for a cell marked with a red edge | Partial | Columns are resizable by dragging the header dividers and the tables scroll sideways, so nothing is cut off for long; no red edge | Low value now |
+| Status bar with selection totals, file count, hovered name | Done | Selection path and size, or the count and total of a multi-selection, on the left; item count, total and free space on the right; the hovered tile's name is in the tooltip | |
 | Max modified date per folder | Done | Last Modified is the newest mtime in the subtree | |
 | Configurable decimal places | Missing | | One setting into `format::size` |
 
@@ -76,14 +76,14 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 |---|---|---|---|
 | Visual treemap sized by file size | Done | Squarified cushion treemap, rendered on worker threads, rebuilt every frame of a resize | |
 | Zoom in and out, navigate to a folder (F10, F11) | Done | Ctrl+Plus, Ctrl+Minus, Ctrl+0, Ctrl+wheel, double click, context menu | |
-| File and folder names drawn on the tiles | Missing | | Text on tiles larger than a threshold, drawn with the painter after the texture; QDirStat does not do this, WizTree does |
+| File and folder names drawn on the tiles | Done | Names on the tiles that are leaves of the layout and at least 48 by 14 points, white with a shadow; View, Names on Treemap Tiles turns them off | Directory names are not drawn over their children's tiles |
 | Colours by extension | Done | QDirStat's MIME categories: images, videos, music, documents, source, archives, executables, junk | |
 | Custom treemap colours | Partial | Category table in `crates/core/src/mime.rs`; no configuration file or dialog | The category file QDirStat uses, then a dialog |
-| Free space shown on the treemap | Missing | | A grey tile for free space once the volume size is known |
+| Free space shown on the treemap | Done | A grey strip on the right, sized by the volume's free share, when the scanned directory is a mount point and the map shows the whole tree | |
 | Show allocated size or file size on the treemap | Partial | Allocated only | With the second size column, a toggle |
 | Hover shows the item | Done | Tooltip with path and size | |
 | Click selects and syncs with the tree, right-click menu | Done | Selection outlines in yellow and red, as QDirStat | |
-| Export the treemap as an image, with size, grayscale and free space options | Partial | `--screenshot FILE` writes the whole window as PPM for development | A File menu entry writing only the treemap at a chosen size; PNG needs an encoder, PPM plus `magick` is the lazy answer |
+| Export the treemap as an image, with size, grayscale and free space options | Partial | `--screenshot FILE` writes the whole window as PPM in a diagnostics build | A File menu entry writing only the treemap at a chosen size; PNG needs an encoder, PPM plus `magick` is the lazy answer |
 | Deleted items marked in the treemap | N/A | Rescan removes them | |
 
 ## File view, file types, duplicates
@@ -93,10 +93,10 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 | File View: every file and folder in one flat list sorted by size | Done | File View tab (Ctrl+2): path, size, percent of total, last modified; sort by column; click selects, double click or Enter jumps to the item in the tree; same right-click menu | |
 | Top 1000 files, max files to display setting | Done | Show 1 000, 10 000, 100 000 or All, default 1 000 | The choice is not saved yet; a setting once the settings file exists |
 | Folders shown in the File View | Done | Folders checkbox, off by default | |
-| File Types view: extension, count, size, allocated, colour | Missing | | A HashMap by extension over the arena, a table with four columns, coloured by category; QDirStat's File Type Statistics window is the model |
-| Select all files of an extension | Missing | | Part of the file types view, needs multi-selection |
-| Duplicate files by name and size, or name, size and date | Missing | | Group by (name, size[, mtime]) over the arena, a count and a size per group, a "duplicates only" filter; by content is out of scope, as in WizTree |
-| Duplicate count and duplicate size columns, plus (+) to expand | Missing | | Part of the duplicates work |
+| File Types view: extension, count, size, allocated, colour | Done | File Types tab (Ctrl+3, F8): extension with its category colour, category, files, size, share; sortable; built in about 10 ms for /usr | Allocated is the only size |
+| Select all files of an extension | Done | Double click a type lists its files in the File View; Ctrl+A there selects them all | |
+| Duplicate files by name and size, or name, size and date | Done | Duplicates combo in the File View strip: Off, Name and size, Name, size and date; the list then shows only files with a duplicate, grouped, the group wasting the most space first; counts are built on a thread, 50 ms for /usr | Contents are not compared, as in WizTree |
+| Duplicate count and duplicate size columns, plus (+) to expand | Done | Dups and Dup Size columns appear with the mode; groups are flat rows next to each other rather than collapsed | |
 
 ## Search and filter
 
@@ -124,20 +124,20 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 | Rename (F2) | Missing | | A text field in the details panel and `std::fs::rename`, then a rescan; small |
 | Open a file on double click | Partial | Double click expands a directory; files open through the Open in File Manager cleanup | `xdg-open` on double click of a file, which is what WizTree does |
 | Explore folder with the file highlighted | Done | Open File Manager Here cleanup, desktop detection as QDirStat | |
-| Multi-folder copy, cut and delete; multi-select (Alt+F3) | Missing | | Multi-selection in both views, trash and cleanups over a set, totals in the status bar; QDirStat has all of this |
+| Multi-folder copy, cut and delete; multi-select (Alt+F3) | Done | Ctrl+click and Shift+click in the tree and the File View, Ctrl+click on tiles, Ctrl+A for every row; trash, cleanups and copy path act on the whole selection, the status bar and the details panel show its count and size, every selected tile is outlined | Copy and cut of files stay declined |
 | Custom actions beyond delete | Done | Nine standard cleanups, user-defined ones in `cleanups.conf`, output window, QDirStat-compatible | OxTree has more than WizTree here |
 
 ## Export and import
 
 | WizTree feature | Status | OxTree today | What closing it touches |
 |---|---|---|---|
-| Export to CSV from the GUI (Ctrl+Alt+E): File Name, Size, Allocated, Modified, Attributes, Files, Folders | Missing | | A writer over the arena in core with a test; a File menu entry and a context menu entry |
-| Copy file and size info to clipboard, indented like the tree | Missing | | Same writer, text format, visible rows only |
-| TSV export and import | Missing | | A separator option on the writer |
+| Export to CSV from the GUI (Ctrl+Alt+E): File Name, Size, Allocated, Modified, Attributes, Files, Folders | Done | File, Export to CSV (Ctrl+Alt+E) for the whole tree, Export Subtree to CSV in the right-click menu; the same columns, directories with a trailing slash before their contents; 170 ms for /usr | Allocated repeats Size until a second size exists |
+| Copy file and size info to clipboard, indented like the tree | Done | Edit, Copy Tree to Clipboard (Ctrl+Alt+C): the rows as shown, name and size, two spaces per level | |
+| TSV export and import | Partial | Tab separated is a checkbox in the dialog and `--tsv` on the command line | Import is below |
 | Import a WizTree CSV for comparison | Missing | | A reader into DirRecords, like the cache reader; worth it only if someone has WizTree exports |
 | Export the file types list | Missing | | Part of the file types view |
-| Percent of parent and max depth export options | Missing | | Two parameters on the writer |
-| UTC timestamps on export | Missing | | A flag on the writer |
+| Percent of parent and max depth export options | Done | Both in the dialog and on the command line | |
+| UTC timestamps on export | Done | A checkbox and `--utc` | |
 | Save and load a scan (MFT dump) | Done | QDirStat cache files, read and write, plain or gzipped; the same thing by another name | |
 | Drag an export file into the window to load it | Missing | | egui exposes dropped files; map to the cache reader |
 
@@ -146,7 +146,7 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 | WizTree feature | Status | OxTree today | What closing it touches |
 |---|---|---|---|
 | Scan a path given on the command line | Done | `oxtree PATH` | |
-| Automated CSV export without a window (`/export`, filters, sort, columns) | Missing | | A headless mode in `main.rs` calling the CSV writer; the benchmark mode shows the shape |
+| Automated CSV export without a window (`/export`, filters, sort, columns) | Done | `oxtree DIR --export FILE` scans and writes without a window, `-` for stdout, `--tsv`, `--utc`, `--max-depth N`, `--percent`, `--search QUERY` as a filter; `--cache FILE --export` converts a cache file | No sort or column choice; the file is in tree order |
 | Treemap image export from the command line | Partial | `--screenshot` writes the window | Treemap only, chosen size, no window |
 | Load an export file from the command line | Done | `--cache FILE` | |
 | Config folder location parameter | Missing | | XDG already covers the common case; `--config DIR` is a few lines |
@@ -159,16 +159,16 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 |---|---|---|
 | F3 select folder | Ctrl+O | Done |
 | Shift+F3 open CSV | File, Read Cache File | Partial (no shortcut) |
-| F4 reset tree, Shift+F4 expand all | Ctrl+W close all; no expand all | Partial |
+| F4 reset tree, Shift+F4 expand all | Ctrl+W close all, Shift+F4 expand all, the Reset button | Done |
 | F5 rescan | F5 | Done |
 | F6, F7 parent and child | Alt+Up, Left, Right, Enter | Done |
-| F8 file types view | | Missing |
+| F8 file types view | F8, Ctrl+3 | Done |
 | F9 treemap toggle | F9 | Done |
 | F10, F11 treemap zoom | Ctrl+Plus, Ctrl+Minus | Done |
 | F2 rename | | Missing |
 | Ctrl+H hide header | | Missing |
 | Ctrl+Shift+F filter | | Missing |
-| Ctrl+Alt+E export, Ctrl+Alt+C copy | Ctrl+C copies the path | Partial |
+| Ctrl+Alt+E export, Ctrl+Alt+C copy | Ctrl+Alt+E, Ctrl+Alt+C; Ctrl+C copies the paths | Done |
 | Ctrl+wheel font size | | Missing |
 
 ## Settings and appearance
@@ -195,7 +195,7 @@ Pinned, not scheduled. Nothing outside `crates/native` touches the operating sys
 
 ## Beyond WizTree
 
-What OxTree has that WizTree does not, so the comparison runs both ways: user-defined cleanup actions with an output window, a terminal opener, QDirStat cache file compatibility, a details panel with permissions and category, exclude rules, cushion shading, and the whole thing in a 8.4 MB binary with no runtime dependencies beyond Mesa.
+What OxTree has that WizTree does not, so the comparison runs both ways: user-defined cleanup actions with an output window, a terminal opener, QDirStat cache file compatibility, a details panel with permissions and category, exclude rules, cushion shading, and the whole thing in a 9 MB binary with no runtime dependencies beyond Mesa.
 
 ## Ranked work list
 
@@ -203,12 +203,12 @@ Ordered by how much of WizTree's daily use each one unlocks, divided by what it 
 
 1. **File View with a top-N cap.** Done 2026-10-22.
 2. **Search and filter.** Search done 2026-10-22. What remains is the tree filter: Ctrl+Shift+F include and exclude patterns applied to the scan results with sizes recomputed over the matches, plus the search history, both waiting on the settings file.
-3. **File Types view.** Extension table with count, size and colour, double click to list the files of that type in the file view. QDirStat's window is the model.
-4. **CSV export and clipboard copy.** One writer in core, three menu entries, a headless command line mode.
-5. **Multi-selection.** Both views, trash and cleanups over the set, totals in the status bar. Also what "select all of this extension" and duplicates cleanup need.
-6. **Duplicates.** Grouping over the arena, two columns, a filter.
-7. **Names on treemap tiles, free space in tree and treemap, hard link dedup.** Three small items that make the pictures match WizTree.
-8. **Settings file and Preferences dialog.** Unblocks the pinned items (cross filesystems, rebuild delay, opt-in update check), decimal places, row height, theme, expand level, column choice, reset to defaults.
-9. **Rename, open on double click, Expand All, expand to level, font size.** Small items taken as they come.
+3. **File Types view.** Done 2026-10-22.
+4. **CSV export and clipboard copy.** Done 2026-10-22, with the headless mode.
+5. **Multi-selection.** Done 2026-10-22.
+6. **Duplicates.** Done 2026-10-22.
+7. **Names on treemap tiles, free space in tree and treemap, hard link dedup.** Done 2026-10-22.
+8. **Settings file and Preferences dialog.** Unblocks the pinned items (cross filesystems, rebuild delay, opt-in update check), decimal places, row height, theme, expand level, column widths, the File View choices, the search history, reset to defaults.
+9. **Rename, open on double click, font size, a second size column (file size next to allocated), the treemap image export, a CSV import.** Small items taken as they come.
 
-Items 1 to 4 make OxTree usable the way WizTree is used. Items 5 to 9 are parity. Review this document when one of them lands: update the row, the counts and the headline.
+Items 1 to 7 are in. What is left is the settings work and the small items. Review this document when one of them lands: update the row, the counts and the headline.

@@ -6,7 +6,7 @@ OxTree scans a directory on all cores, draws the result as a sortable tree with 
 
 ## Status
 
-Version 0.1.0 covers the daily use: scan, tree, treemap, details, cleanups, trash, QDirStat cache files. Not there yet: file type and size statistics, file age view, package views, filesystems list, exclude rule and category editors, a settings dialog. Cleanups and exclude rules are edited in their configuration files.
+Version 0.1.0 covers the daily use: scan, tree, treemap, details, cleanups, trash, QDirStat cache files, a File View with search, a File Types view, duplicates, CSV export and multi-selection. Not there yet: a settings file, so column widths and the choices in the tab strip reset with the window; rename; a file age view; exclude rule and category editors. Cleanups and exclude rules are edited in their configuration files.
 
 ## Build
 
@@ -16,7 +16,7 @@ Rust 1.88 or newer and a working OpenGL driver.
 cargo build --release
 ```
 
-The binary is `target/release/oxtree`, about 8 MB, with no dependencies beyond the system's C library and Mesa.
+The binary is `target/release/oxtree`, about 9 MB, with no dependencies beyond the system's C library and Mesa.
 
 ## Use
 
@@ -24,7 +24,10 @@ The binary is `target/release/oxtree`, about 8 MB, with no dependencies beyond t
 oxtree /usr
 oxtree --cache ~/root.cache.gz
 oxtree
+oxtree /usr --export usr.csv --max-depth 2
 ```
+
+The last form scans without a window and writes WizTree's CSV columns (`--tsv`, `--utc`, `--percent`, `--search QUERY` to filter, `-` for stdout).
 
 Without arguments a dialog asks for the directory. It lists every mounted local filesystem with its size, used and free space and a Scan button, and the Browse button uses `kdialog` or `zenity` when one is installed. A scan crosses into other local filesystems by default, so a scan of `/` covers the machine; kernel tables, network mounts and removable media under `/run` stay out. The checkbox in the dialog turns crossing off, which is the view to use when the question is which filesystem is full. Directories you cannot read are listed as `[Not Read]`; File, Rescan as Root replaces the window with OxTree running as root on the same directory, asking for your password through polkit.
 
@@ -38,7 +41,10 @@ Without arguments a dialog asks for the directory. It lists every mounted local 
 | Ctrl+wheel over the treemap | Zoom |
 | Double click a tile | Zoom into its directory |
 | Right click a row or a tile | Menu with copy path, trash, cleanups and treemap zoom |
-| Ctrl+1, Ctrl+2 | Tree View, File View (all files, largest first, with a Show cap) |
+| Ctrl+1, Ctrl+2, Ctrl+3 | Tree View, File View (all files, largest first, with a Show cap and a duplicates mode), File Types (by extension) |
+| Ctrl+click, Shift+click, Ctrl+A | Select several items; trash, cleanups and copy then act on all of them |
+| Shift+F4, Ctrl+W | Expand all tree levels, close them |
+| Ctrl+Alt+E, Ctrl+Alt+C | Export to CSV, copy the tree as shown to the clipboard |
 | Ctrl+F | Search in the File View: `*.mp3`, `>100m`, `<2024/01/01`, `>=today-7`, `=folder`, `/regex`; space is AND, `\|` is OR, `!` is NOT |
 | F9 | Show or hide the treemap |
 | Ctrl+C | Copy the path |

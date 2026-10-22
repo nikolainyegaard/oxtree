@@ -53,6 +53,8 @@ pub const ICON_FILE_EDGE: Color32 = Color32::from_rgb(0x90, 0x90, 0x90);
 pub const ICON_SYMLINK: Color32 = Color32::from_rgb(0x40, 0xa0, 0xff);
 pub const ICON_MOUNT: Color32 = Color32::from_rgb(0xa0, 0xa8, 0xb8);
 pub const ICON_SIZE: f32 = 14.0;
+/// The free space row bar and the treemap strip.
+pub const FREE_SPACE: Color32 = Color32::from_rgb(0x70, 0x78, 0x80);
 
 /// Behind a search match in the File View.
 pub const SEARCH_HIGHLIGHT: Color32 = Color32::from_rgba_premultiplied(0x80, 0x80, 0x00, 0x80);
@@ -65,6 +67,8 @@ pub const INDENT: f32 = 18.0;
 /// The name column never gets narrower than this; the tree scrolls
 /// sideways instead.
 pub const COL_NAME_MIN: f32 = 400.0;
+/// The File View path column, likewise.
+pub const COL_PATH_MIN: f32 = 520.0;
 pub const COL_PERCENT_NUM: f32 = 56.0;
 pub const COL_SIZE: f32 = 84.0;
 pub const COL_COUNT: f32 = 72.0;

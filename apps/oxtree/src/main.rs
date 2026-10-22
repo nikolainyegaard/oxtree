@@ -34,7 +34,14 @@ struct Args {
     cache: Option<PathBuf>,
     screenshot: Option<PathBuf>,
     files_view: bool,
+    types_view: bool,
     search: Option<String>,
+    /// `--export FILE`: scan, write CSV, exit; `-` is stdout.
+    export: Option<PathBuf>,
+    tsv: bool,
+    utc: bool,
+    max_depth: Option<u32>,
+    percent_of_parent: bool,
     help: bool,
 }
 
@@ -44,7 +51,13 @@ fn parse_args() -> Args {
         cache: None,
         screenshot: None,
         files_view: false,
+        types_view: false,
         search: None,
+        export: None,
+        tsv: false,
+        utc: false,
+        max_depth: None,
+        percent_of_parent: false,
         help: false,
     };
     let mut it = std::env::args().skip(1);
@@ -53,7 +66,13 @@ fn parse_args() -> Args {
             "--cache" => args.cache = it.next().map(PathBuf::from),
             "--screenshot" => args.screenshot = it.next().map(PathBuf::from),
             "--files" => args.files_view = true,
+            "--types" => args.types_view = true,
             "--search" => args.search = it.next(),
+            "--export" => args.export = it.next().map(PathBuf::from),
+            "--tsv" => args.tsv = true,
+            "--utc" => args.utc = true,
+            "--max-depth" => args.max_depth = it.next().and_then(|v| v.parse().ok()),
+            "--percent" => args.percent_of_parent = true,
             "-h" | "--help" => args.help = true,
             _ if a.starts_with("--") => args.help = true,
             _ => args.path = Some(PathBuf::from(a)),
@@ -67,8 +86,15 @@ fn main() {
     diagnostics::install_logger();
     let args = parse_args();
     if args.help {
-        out("usage: oxtree [DIRECTORY] [--cache FILE] [--files] [--search QUERY]".to_string());
+        out(
+            "usage: oxtree [DIRECTORY] [--cache FILE] [--files] [--types] [--search QUERY]"
+                .to_string(),
+        );
+        out("       oxtree DIRECTORY --export FILE|- [--tsv] [--utc] [--max-depth N] [--percent] [--search QUERY]".to_string());
         return;
+    }
+    if let Some(file) = &args.export {
+        std::process::exit(export(&args, file));
     }
     let started = Instant::now();
     startup_mark("arguments parsed");
@@ -105,6 +131,9 @@ fn main() {
                     if args.files_view {
                         app.view = oxtree_ui::app::View::Files;
                     }
+                    if args.types_view {
+                        app.view = oxtree_ui::app::View::Types;
+                    }
                     if let Some(s) = args.search {
                         app.view = oxtree_ui::app::View::Files;
                         app.file_view.search = s;
@@ -121,6 +150,89 @@ fn main() {
     if let Err(e) = result {
         eprintln!("OxTree could not open a window: {e}");
         std::process::exit(1);
+    }
+}
+
+/// Headless export: scan the directory (or read the cache file) and write
+/// WizTree's CSV columns, filtered by `--search` when given. Returns the
+/// exit code.
+fn export(args: &Args, file: &PathBuf) -> i32 {
+    let tree = match (&args.cache, &args.path) {
+        (Some(c), _) => oxtree_native::cache_io::read(c),
+        (None, Some(p)) => {
+            let (threads, cross) = oxtree_ui::app::scan_defaults();
+            oxtree_native::walker::scan_blocking(
+                p,
+                oxtree_native::ScanOptions {
+                    threads,
+                    cross_filesystems: cross,
+                    mounts: oxtree_native::mounts::MountTable::load(),
+                    ..Default::default()
+                },
+            )
+            .map(|(t, _)| t)
+        }
+        (None, None) => Err("--export needs a directory or --cache FILE".into()),
+    };
+    let tree = match tree {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("{e}");
+            return 1;
+        }
+    };
+    let utc_offset = if args.utc {
+        0
+    } else {
+        oxtree_native::localtime::utc_offset_secs()
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let query = match args.search.as_deref() {
+        Some(q) => match oxtree_core::query::Query::parse(q, now, utc_offset) {
+            Ok(q) => Some(q),
+            Err(e) => {
+                eprintln!("--search: {e}");
+                return 1;
+            }
+        },
+        None => None,
+    };
+    let opts = oxtree_core::export::ExportOptions {
+        separator: if args.tsv { '\t' } else { ',' },
+        max_depth: args.max_depth,
+        utc_offset,
+        percent_of_parent: args.percent_of_parent,
+    };
+    let text = oxtree_core::export::csv(&tree, tree.root(), &opts, |n| {
+        let Some(q) = &query else { return true };
+        let path = tree.path(n);
+        q.matches(
+            &oxtree_core::query::Item {
+                name: tree.name(n),
+                path: &path,
+                size: tree.size(n),
+                mtime: tree.mtime(n),
+                is_dir: tree.is_dir_like(n),
+            },
+            true,
+        )
+    });
+    let result = if file.as_os_str() == "-" {
+        std::io::stdout().write_all(text.as_bytes())
+    } else {
+        std::fs::write(file, text)
+    };
+    match result {
+        Ok(()) => 0,
+        // A reader that stopped early, `head` for one, is not an error.
+        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => 0,
+        Err(e) => {
+            eprintln!("Cannot write {}: {e}", file.display());
+            1
+        }
     }
 }
 
@@ -197,6 +309,7 @@ impl eframe::App for Shell {
         match app.view {
             oxtree_ui::app::View::Tree => oxtree_ui::tree_view::handle_keys(app, &ctx),
             oxtree_ui::app::View::Files => oxtree_ui::file_view::handle_keys(app, &ctx),
+            oxtree_ui::app::View::Types => {}
         }
 
         egui::Panel::top("menu").show(root, |ui| oxtree_ui::menus::show(app, ui));
@@ -225,6 +338,7 @@ impl eframe::App for Shell {
                 match app.view {
                     oxtree_ui::app::View::Tree => oxtree_ui::tree_view::show(app, ui),
                     oxtree_ui::app::View::Files => oxtree_ui::file_view::show(app, ui),
+                    oxtree_ui::app::View::Types => oxtree_ui::types_view::show(app, ui),
                 }
             });
 

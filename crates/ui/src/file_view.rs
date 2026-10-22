@@ -1,13 +1,15 @@
 //! The File View: every file (and optionally every directory) in one flat
 //! list, largest first, capped at the largest N. The tab strip above the
-//! central panel switches between this and the tree.
+//! central panel switches between this, the tree and the file types.
 
 use eframe::egui::text::CCursor;
-use eframe::egui::{self, Align2, Pos2, Rect, Sense, Ui, Vec2};
+use eframe::egui::{self, Align2, Pos2, Rect, Sense, Stroke, Ui, Vec2};
+use oxtree_core::dupes::DupMode;
 use oxtree_core::flat::FlatSort;
 use oxtree_core::{format, time};
 
 use crate::app::{OxTreeApp, View};
+use crate::columns;
 use crate::theme;
 
 pub const MAX_CHOICES: [(usize, &str); 4] = [
@@ -17,11 +19,24 @@ pub const MAX_CHOICES: [(usize, &str); 4] = [
     (0, "All"),
 ];
 
-/// Tree View and File View tabs, plus the file view's own controls.
+/// Column indexes into `app.file_columns`.
+const PATH: usize = 0;
+const SIZE: usize = 1;
+const PCT: usize = 2;
+const MTIME: usize = 3;
+const DUPS: usize = 4;
+const DUP_SIZE: usize = 5;
+
+/// Tree View, File View and File Types tabs, the Reset button, plus the
+/// file view's own controls.
 pub fn tabs(app: &mut OxTreeApp, ui: &mut Ui) {
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.selectable_value(&mut app.view, View::Tree, "Tree View");
         ui.selectable_value(&mut app.view, View::Files, "File View");
+        ui.selectable_value(&mut app.view, View::Types, "File Types");
+        if reset_button(ui).clicked() {
+            app.reset_views();
+        }
         if app.view == View::Files {
             ui.separator();
             ui.label("Show");
@@ -43,6 +58,23 @@ pub fn tabs(app: &mut OxTreeApp, ui: &mut Ui) {
             if ui.checkbox(&mut fv.include_dirs, "Folders").changed() {
                 fv.dirty = true;
             }
+            ui.label("Duplicates");
+            let dup_label = DupMode::ALL
+                .iter()
+                .find(|(m, _)| *m == fv.dup_mode)
+                .map(|(_, l)| *l)
+                .unwrap_or("Off");
+            egui::ComboBox::from_id_salt("file-view-dupes")
+                .selected_text(dup_label)
+                .show_ui(ui, |ui| {
+                    for (mode, label) in DupMode::ALL {
+                        if ui.selectable_value(&mut fv.dup_mode, mode, label).changed() {
+                            fv.dirty = true;
+                        }
+                    }
+                })
+                .response
+                .on_hover_text("Files with the same name and size, or the same name, size and date, grouped; contents are not compared");
             ui.separator();
             let box_id = ui.scope_id().with("file-search");
             let edit = egui::TextEdit::singleline(&mut fv.search)
@@ -88,24 +120,48 @@ pub fn tabs(app: &mut OxTreeApp, ui: &mut Ui) {
     }
 }
 
-struct Columns {
-    path_w: f32,
-    size_x: f32,
-    pct_x: f32,
-    right: f32,
-}
-
-fn columns(left: f32, width: f32) -> Columns {
-    let right = left + width;
-    let mtime_x = right - theme::COL_MTIME;
-    let pct_x = mtime_x - theme::COL_GAP - theme::COL_PERCENT_NUM;
-    let size_x = pct_x - theme::COL_GAP - theme::COL_SIZE;
-    Columns {
-        path_w: (size_x - theme::COL_GAP - left).max(80.0),
-        size_x,
-        pct_x,
-        right,
-    }
+/// A square button with a painted eraser: reset, as distinct from the
+/// circular arrow of a refresh.
+fn reset_button(ui: &mut Ui) -> egui::Response {
+    let resp = ui
+        .add(egui::Button::new("").min_size(Vec2::splat(22.0)))
+        .on_hover_text("Reset the views: close the tree, clear the search and filters, default sorting, column widths and treemap zoom");
+    let r = resp.rect;
+    let c = r.center();
+    let color = ui.visuals().strong_text_color();
+    let painter = ui.painter();
+    // The eraser body, tilted: a rounded block with a darker rubbing end.
+    let body = [
+        Pos2::new(c.x - 6.0, c.y + 1.0),
+        Pos2::new(c.x - 1.0, c.y - 4.0),
+        Pos2::new(c.x + 5.0, c.y + 2.0),
+        Pos2::new(c.x, c.y + 7.0),
+    ];
+    painter.add(egui::Shape::convex_polygon(
+        body.to_vec(),
+        theme::ICON_FILE,
+        Stroke::new(1.0, color),
+    ));
+    let tip = [
+        Pos2::new(c.x - 1.0, c.y - 4.0),
+        Pos2::new(c.x + 2.0, c.y - 7.0),
+        Pos2::new(c.x + 8.0, c.y - 1.0),
+        Pos2::new(c.x + 5.0, c.y + 2.0),
+    ];
+    painter.add(egui::Shape::convex_polygon(
+        tip.to_vec(),
+        theme::ICON_DIR,
+        Stroke::new(1.0, color),
+    ));
+    // The streak it leaves.
+    painter.line_segment(
+        [
+            Pos2::new(c.x - 8.0, c.y + 8.0),
+            Pos2::new(c.x - 3.0, c.y + 8.0),
+        ],
+        Stroke::new(1.5, color),
+    );
+    resp
 }
 
 pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
@@ -113,84 +169,17 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
     let font = egui::TextStyle::Body.resolve(ui.style());
     let text_color = ui.visuals().strong_text_color();
     let weak = ui.visuals().weak_text_color();
+    let dup_mode = app.file_view.dup_mode != DupMode::Off;
+    let dupes = app
+        .dupes
+        .as_ref()
+        .filter(|(m, _)| *m == app.file_view.dup_mode)
+        .map(|(_, c)| c.clone());
 
-    // Header
     let (header_rect, _) = ui.allocate_exact_size(
         Vec2::new(ui.available_width(), theme::ROW_HEIGHT),
         Sense::hover(),
     );
-    let cols = columns(header_rect.left() + 4.0, header_rect.width() - 8.0);
-    let painter = ui.painter_at(header_rect);
-    painter.rect_filled(header_rect, 0.0, ui.visuals().faint_bg_color);
-    let y = header_rect.center().y;
-    let headers: [(Option<FlatSort>, f32, f32, Align2, &str); 4] = [
-        (
-            Some(FlatSort::Name),
-            header_rect.left() + 4.0,
-            cols.path_w,
-            Align2::LEFT_CENTER,
-            "Path",
-        ),
-        (
-            Some(FlatSort::Size),
-            cols.size_x,
-            theme::COL_SIZE,
-            Align2::RIGHT_CENTER,
-            "Size",
-        ),
-        (
-            None,
-            cols.pct_x,
-            theme::COL_PERCENT_NUM,
-            Align2::RIGHT_CENTER,
-            "%",
-        ),
-        (
-            Some(FlatSort::Mtime),
-            cols.right - theme::COL_MTIME,
-            theme::COL_MTIME,
-            Align2::RIGHT_CENTER,
-            "Last Modified",
-        ),
-    ];
-    for (sort, x, w, align, label) in headers {
-        let rect = Rect::from_min_size(
-            Pos2::new(x, header_rect.top()),
-            Vec2::new(w, theme::ROW_HEIGHT),
-        );
-        let resp = ui.interact(rect, ui.scope_id().with(("fhdr", label)), Sense::click());
-        let sorted_here = sort.is_some() && sort == Some(app.file_view.sort);
-        let anchor = if align == Align2::LEFT_CENTER {
-            Pos2::new(x, y)
-        } else {
-            Pos2::new(x + w - if sorted_here { 12.0 } else { 0.0 }, y)
-        };
-        if sorted_here {
-            let cx = if align == Align2::LEFT_CENTER {
-                x + w - 8.0
-            } else {
-                x + w - 5.0
-            };
-            crate::tree_view::sort_marker(
-                &painter,
-                Pos2::new(cx, y),
-                app.file_view.ascending,
-                weak,
-            );
-        }
-        painter.text(
-            anchor,
-            align,
-            label,
-            font.clone(),
-            if resp.hovered() { text_color } else { weak },
-        );
-        if resp.clicked() {
-            if let Some(s) = sort {
-                app.set_file_sort(s);
-            }
-        }
-    }
 
     let total = app.file_view.rows.len();
     let selected = app.selected;
@@ -201,8 +190,8 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
     };
     app.file_view.scroll_to_selected = false;
 
-    let mut clicked: Option<(u32, bool)> = None; // node, double
-    let mut area = egui::ScrollArea::vertical()
+    let mut clicked: Option<(u32, bool, egui::Modifiers)> = None; // node, double
+    let mut area = egui::ScrollArea::both()
         .auto_shrink([false, false])
         .id_salt("file-rows");
     if let Some(i) = scroll_to {
@@ -210,10 +199,14 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
         let offset = i as f32 * (theme::ROW_HEIGHT + spacing) - ui.available_height() / 2.0;
         area = area.vertical_scroll_offset(offset.max(0.0));
     }
-    area.show_rows(ui, theme::ROW_HEIGHT, total, |ui, range| {
+    let shown_columns = if dup_mode { 6 } else { 4 };
+    let out = area.show_rows(ui, theme::ROW_HEIGHT, total, |ui, range| {
         let Some(tree) = app.tree.clone() else { return };
         let root_size = tree.size(tree.root()).max(1);
-        let width = ui.available_width();
+        let width = ui
+            .clip_rect()
+            .width()
+            .max(app.file_columns.widths.iter().take(shown_columns).sum());
         for i in range {
             let Some(node) = app.file_view.rows.get(i).copied() else {
                 continue;
@@ -225,18 +218,22 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
                 egui::Id::unique(("oxtree-file-row", node)),
                 Sense::click(),
             );
-            let cols = columns(rect.left() + 4.0, rect.width() - 8.0);
             let painter = ui.painter_at(rect);
-            let is_selected = selected == Some(node);
-            if is_selected {
-                painter.rect_filled(rect, 2.0, ui.visuals().selection.bg_fill);
-            } else if resp.hovered() {
-                painter.rect_filled(rect, 2.0, ui.visuals().widgets.hovered.weak_bg_fill);
-            }
+            columns::stripe(ui, &painter, rect, i);
+            columns::row_background(
+                ui,
+                &painter,
+                rect,
+                app.marked.contains(&node),
+                selected == Some(node),
+                resp.hovered(),
+            );
+            let cols = &app.file_columns;
+            let left = rect.left();
             let y = rect.center().y;
             let path_clip = Rect::from_min_max(
-                Pos2::new(rect.left() + 4.0, rect.top()),
-                Pos2::new(rect.left() + 4.0 + cols.path_w, rect.bottom()),
+                Pos2::new(left + columns::PAD, rect.top()),
+                Pos2::new(cols.text_right(left, PATH), rect.bottom()),
             );
             let path = tree.path(node);
             let color = if tree.is_dir_like(node) {
@@ -246,7 +243,7 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
             };
             let clipped = painter.with_clip_rect(path_clip);
             let galley = clipped.layout_no_wrap(path.clone(), font.clone(), color);
-            let pos = Pos2::new(rect.left() + 4.0, y - galley.size().y / 2.0);
+            let pos = Pos2::new(left + columns::PAD, y - galley.size().y / 2.0);
             if let Some((a, b)) = search_highlight(app, &path, tree.name(node)) {
                 let x0 = galley.pos_from_cursor(CCursor::new(a)).min.x;
                 let x1 = galley.pos_from_cursor(CCursor::new(b)).min.x;
@@ -260,45 +257,103 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
                 );
             }
             clipped.galley(pos, galley, color);
-            painter.text(
-                Pos2::new(cols.size_x + theme::COL_SIZE, y),
-                Align2::RIGHT_CENTER,
-                format::size(tree.size(node)),
-                font.clone(),
-                text_color,
-            );
-            painter.text(
-                Pos2::new(cols.pct_x + theme::COL_PERCENT_NUM, y),
-                Align2::RIGHT_CENTER,
+            let number = |col: usize, text: String| {
+                painter.text(
+                    Pos2::new(cols.text_right(left, col), y),
+                    Align2::RIGHT_CENTER,
+                    text,
+                    font.clone(),
+                    text_color,
+                );
+            };
+            number(SIZE, format::size(tree.size(node)));
+            number(
+                PCT,
                 format::percent(tree.size(node) as f64 * 100.0 / root_size as f64),
-                font.clone(),
-                text_color,
             );
-            painter.text(
-                Pos2::new(cols.right, y),
-                Align2::RIGHT_CENTER,
-                time::format(tree.mtime(node), app.utc_offset),
-                font.clone(),
-                text_color,
-            );
+            number(MTIME, time::format(tree.mtime(node), app.utc_offset));
+            if let Some(d) = &dupes {
+                let count = d.get(node as usize).copied().unwrap_or(0);
+                if count > 1 {
+                    number(DUPS, format::grouped(count as u64));
+                    number(
+                        DUP_SIZE,
+                        format::size((count as u64).saturating_mul(tree.size(node))),
+                    );
+                }
+            }
 
             if resp.secondary_clicked() {
-                app.select(node, false);
+                app.select_for_menu(node);
             }
             resp.context_menu(|ui| crate::menus::context_menu(app, ui));
+            let mods = ui.input(|i| i.modifiers);
             if resp.double_clicked() {
-                clicked = Some((node, true));
+                clicked = Some((node, true, mods));
             } else if resp.clicked() {
-                clicked = Some((node, false));
+                clicked = Some((node, false, mods));
             }
         }
     });
 
-    if let Some((node, double)) = clicked {
+    let left = out.inner_rect.left() - out.state.clamped_offset().x;
+    let sort = |s: FlatSort| (app.file_view.sort == s).then_some(app.file_view.ascending);
+    let mut cells = vec![
+        columns::HeaderCell {
+            label: "Path",
+            right: false,
+            sort: sort(FlatSort::Name),
+        },
+        columns::HeaderCell {
+            label: "Size",
+            right: true,
+            sort: sort(FlatSort::Size),
+        },
+        columns::HeaderCell {
+            label: "%",
+            right: true,
+            sort: None,
+        },
+        columns::HeaderCell {
+            label: "Last Modified",
+            right: true,
+            sort: sort(FlatSort::Mtime),
+        },
+    ];
+    if dup_mode {
+        cells.push(columns::HeaderCell {
+            label: "Dups",
+            right: true,
+            sort: None,
+        });
+        cells.push(columns::HeaderCell {
+            label: "Dup Size",
+            right: true,
+            sort: None,
+        });
+    }
+    match columns::header(
+        ui,
+        &mut app.file_columns,
+        header_rect,
+        left,
+        &cells,
+        "files",
+    ) {
+        Some(0) => app.set_file_sort(FlatSort::Name),
+        Some(1) => app.set_file_sort(FlatSort::Size),
+        Some(3) => app.set_file_sort(FlatSort::Mtime),
+        _ => {}
+    }
+
+    if let Some((node, double, mods)) = clicked {
         if double {
             // Jump to the item in the tree, ancestors expanded.
             app.select(node, true);
             app.view = View::Tree;
+        } else if mods.ctrl || mods.shift {
+            let order = app.file_view.rows.clone();
+            app.select_in(node, mods, &order);
         } else {
             app.select(node, false);
         }
@@ -319,20 +374,26 @@ fn search_highlight(app: &OxTreeApp, path: &str, name: &str) -> Option<(usize, u
 }
 
 /// Up, Down, Home and End move the selection through the list; Enter jumps
-/// to the item in the tree.
+/// to the item in the tree; Ctrl+A selects every listed row.
 pub fn handle_keys(app: &mut OxTreeApp, ctx: &egui::Context) {
     if ctx.memory(|m| m.focused().is_some()) || app.tree.is_none() {
         return;
     }
-    let (up, down, home, end, enter) = ctx.input(|i| {
+    let (up, down, home, end, enter, all) = ctx.input(|i| {
         (
             i.key_pressed(egui::Key::ArrowUp),
             i.key_pressed(egui::Key::ArrowDown),
             i.key_pressed(egui::Key::Home),
             i.key_pressed(egui::Key::End),
             i.key_pressed(egui::Key::Enter),
+            i.modifiers.ctrl && i.key_pressed(egui::Key::A),
         )
     });
+    if all {
+        let order = app.file_view.rows.clone();
+        app.select_all(&order);
+        return;
+    }
     if !(up || down || home || end || enter) {
         return;
     }

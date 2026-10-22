@@ -3,7 +3,7 @@
 OxTree is a Cargo workspace with four layers. Dependencies point downwards only; nothing below the binary opens a window.
 
 ```
-apps/oxtree          the binary: arguments, the eframe window, --files, --search; with --features diagnostics also diagnostics.rs (startup timing, --screenshot) and the oxtree-bench binary
+apps/oxtree          the binary: arguments, the eframe window, --files, --types, --search, the headless --export; with --features diagnostics also diagnostics.rs (startup timing, --screenshot) and the oxtree-bench binary
 crates/ui            egui views, theme tokens, application state (oxtree-ui)
 crates/native        filesystem walk, child processes, config paths, cache files on disk (oxtree-native)
 crates/core          pure logic, no I/O: tree arena, layout, shading, categories, cleanups, formats (oxtree-core)
@@ -30,6 +30,9 @@ crates/core/src/
   layout.rs                squarified layout with cushion coefficients, hit testing
   cushion.rs               per-pixel shading into an RGBA buffer across threads
   flat.rs                  the File View's list: every node sorted, filtered, capped at N
+  types.rs                 the File Types table: files grouped by extension with category, count and size
+  dupes.rs                 duplicate counts by name and size, or name, size and date
+  export.rs                CSV and TSV in WizTree's columns, the indented clipboard text
   query.rs                 WizTree's search syntax: parser and matcher
   mime.rs                  file categories and QDirStat's default table
   glob.rs                  * and ? matching for category patterns
@@ -49,15 +52,17 @@ crates/native/src/
   config.rs                XDG config dir, cleanups file, QDirStat fallback
   cache_io.rs              cache files on disk, gzip through the system binary
   localtime.rs             date +%z once
-  mounts.rs                /proc/self/mounts, df, which filesystems a scan may cross into
+  mounts.rs                /proc/self/mounts, df for volume sizes and free space, which filesystems a scan may cross into
   root.rs                  effective uid, second instance as root through pkexec
 crates/ui/src/
   lib.rs
   app.rs                   OxTreeApp state, pump(), actions, row flattening, treemap jobs
   theme.rs                 tokens
   expansion.rs             which rows are open and whether by hand or by a reveal
-  tree_view.rs             header and virtual rows, keyboard navigation
-  file_view.rs             tab strip, flat list with cap and folders toggle, keyboard navigation
+  columns.rs               draggable column widths and the shared header band, stripes, selection background
+  tree_view.rs             virtual rows, the free space row, keyboard navigation
+  file_view.rs             tab strip with the Reset button, flat list with cap, folders and duplicates, keyboard navigation
+  types_view.rs            the File Types table
   treemap_view.rs          texture, hover, click, zoom, selection outlines
   details_view.rs          details panel
   status_bar.rs
@@ -73,7 +78,9 @@ apps/oxtree/src/
 2. The walker's worker threads produce one `DirRecord` per directory. When the queue drains, `Tree::build` turns the records into the arena and the result crosses an `mpsc` channel as `ScanEvent::Done`.
 3. `OxTreeApp::pump`, called at the top of every frame, drains that channel and every other one: treemap render results, cleanup output lines, the trash job, the directory picker.
 4. Views are free functions taking `&mut OxTreeApp` and a `Ui`. They read state and call methods; they hold no state of their own.
-5. The treemap view asks for a texture of its current pixel size. `request_treemap` spawns one worker that lays out and shades the tree and sends back the pixels and the tiles; the view draws the latest texture stretched to its rectangle and uses the tiles for hit testing.
+5. The treemap view asks for a texture of its current pixel size. `request_treemap` spawns one worker that lays out and shades the tree and sends back the pixels and the tiles; the view draws the latest texture at its own pixel size, paints the free space strip, the tile names and the selection outlines over it, and uses the tiles for hit testing.
+6. The selection is a set (`marked`) plus the current item (`selected`). Views call `select` for a plain click and `select_in` with the modifiers and the rows as shown for Ctrl and Shift clicks; actions take `selection()`. A cleanup over several items runs once per item through `cleanup_queue`, continued from `pump` when the previous run finishes.
+7. The File Types table is built on the UI thread the first time the tab is shown after a scan (10 ms for /usr); duplicate counts are built on a thread like the File View list, and the list waits for them.
 
 ## Threads and channels
 

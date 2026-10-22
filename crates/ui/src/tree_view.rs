@@ -2,55 +2,21 @@
 //! per visible node, drawn only for the rows inside the scroll viewport.
 
 use eframe::egui::{self, Align2, Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
-use oxtree_core::{format, time, Kind};
+use oxtree_core::{format, time, Kind, NO_NODE};
 
 use crate::app::{Column, OxTreeApp};
+use crate::columns;
 use crate::theme;
 
-struct Columns {
-    name_w: f32,
-    bar_x: f32,
-    pct_x: f32,
-    size_x: f32,
-    items_x: f32,
-    files_x: f32,
-    subdirs_x: f32,
-    mtime_x: f32,
-    right: f32,
-}
-
-/// Below this row width the tree scrolls sideways instead of squeezing the
-/// name column: the name's minimum plus every fixed column and gap.
-const MIN_WIDTH: f32 = theme::COL_NAME_MIN
-    + theme::PERCENT_BAR_COLUMN_WIDTH
-    + theme::COL_PERCENT_NUM
-    + theme::COL_SIZE
-    + 3.0 * theme::COL_COUNT
-    + theme::COL_MTIME
-    + 7.0 * theme::COL_GAP
-    + 8.0;
-
-fn columns(left: f32, width: f32) -> Columns {
-    let right = left + width;
-    let mtime_x = right - theme::COL_MTIME;
-    let subdirs_x = mtime_x - theme::COL_GAP - theme::COL_COUNT;
-    let files_x = subdirs_x - theme::COL_GAP - theme::COL_COUNT;
-    let items_x = files_x - theme::COL_GAP - theme::COL_COUNT;
-    let size_x = items_x - theme::COL_GAP - theme::COL_SIZE;
-    let pct_x = size_x - theme::COL_GAP - theme::COL_PERCENT_NUM;
-    let bar_x = pct_x - theme::COL_GAP - theme::PERCENT_BAR_COLUMN_WIDTH;
-    Columns {
-        name_w: (bar_x - theme::COL_GAP - left).max(80.0),
-        bar_x,
-        pct_x,
-        size_x,
-        items_x,
-        files_x,
-        subdirs_x,
-        mtime_x,
-        right,
-    }
-}
+/// Column indexes into `app.tree_columns`.
+const NAME: usize = 0;
+const BAR: usize = 1;
+const PCT: usize = 2;
+const SIZE: usize = 3;
+const ITEMS: usize = 4;
+const FILES: usize = 5;
+const SUBDIRS: usize = 6;
+const MTIME: usize = 7;
 
 pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
     let font = egui::TextStyle::Body.resolve(ui.style());
@@ -82,7 +48,7 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
     };
     app.scroll_to_selected = false;
 
-    let mut clicked: Option<(u32, bool, bool)> = None; // node, toggle, double
+    let mut clicked: Option<(u32, bool, bool, egui::Modifiers)> = None; // node, toggle, double
     let mut area = egui::ScrollArea::both()
         .auto_shrink([false, false])
         .id_salt("tree-rows");
@@ -93,35 +59,41 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
     }
     let out = area.show_rows(ui, theme::ROW_HEIGHT, total, |ui, range| {
         let Some(tree) = app.tree.clone() else { return };
-        // Inside the scroll area the clip rect is the viewport; the rows
-        // are at least MIN_WIDTH wide, and the rest scrolls sideways.
-        let width = ui.clip_rect().width().max(MIN_WIDTH);
+        let width = columns::row_width(ui, &app.tree_columns);
         for i in range {
             let Some(row) = app.rows.get(i).copied() else {
                 continue;
             };
+            let (rect, _) =
+                ui.allocate_exact_size(Vec2::new(width, theme::ROW_HEIGHT), Sense::hover());
+            let painter = ui.painter_at(rect);
+            columns::stripe(ui, &painter, rect, i);
+            let left = rect.left();
+            let cols = &app.tree_columns;
+            let y = rect.center().y;
+            if row.node == NO_NODE {
+                free_space_row(app, &painter, rect, &font, weak);
+                continue;
+            }
             // The id is the node, not the row position, so that after rows
             // shift (expand, collapse, scroll) egui's hover and click state
             // still refers to the same item instead of whatever row now sits
             // at that index.
-            let (rect, _) =
-                ui.allocate_exact_size(Vec2::new(width, theme::ROW_HEIGHT), Sense::hover());
             let resp = ui.interact(
                 rect,
                 egui::Id::unique(("oxtree-row", row.node)),
                 Sense::click(),
             );
-            let cols = columns(rect.left() + 4.0, rect.width() - 8.0);
-            let painter = ui.painter_at(rect);
-            let is_selected = selected == Some(row.node);
-            if is_selected {
-                painter.rect_filled(rect, 2.0, ui.visuals().selection.bg_fill);
-            } else if resp.hovered() {
-                painter.rect_filled(rect, 2.0, ui.visuals().widgets.hovered.weak_bg_fill);
-            }
+            columns::row_background(
+                ui,
+                &painter,
+                rect,
+                app.marked.contains(&row.node),
+                selected == Some(row.node),
+                resp.hovered(),
+            );
             let kind = tree.kind(row.node);
-            let y = rect.center().y;
-            let indent = rect.left() + 4.0 + row.depth as f32 * theme::INDENT;
+            let indent = left + columns::PAD + row.depth as f32 * theme::INDENT;
 
             // Expand marker and name
             let expandable = tree.child_count(row.node) > 0;
@@ -153,7 +125,7 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
             let name_x = icon_x + theme::ICON_SIZE + 5.0;
             let name_clip = Rect::from_min_max(
                 Pos2::new(name_x, rect.top()),
-                Pos2::new(cols.bar_x - theme::COL_GAP, rect.bottom()),
+                Pos2::new(cols.text_right(left, NAME), rect.bottom()),
             );
             let name_painter = painter.with_clip_rect(name_clip);
             let shown = if row.node == tree.root() {
@@ -170,17 +142,15 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
             );
 
             // Percent bar
+            let bar_x = cols.x(left, BAR) + columns::PAD;
             let bar_rect = Rect::from_min_max(
-                Pos2::new(cols.bar_x, rect.top() + 3.0),
-                Pos2::new(
-                    cols.bar_x + theme::PERCENT_BAR_COLUMN_WIDTH,
-                    rect.bottom() - 3.0,
-                ),
+                Pos2::new(bar_x, rect.top() + 3.0),
+                Pos2::new(cols.text_right(left, BAR), rect.bottom() - 3.0),
             );
             match kind {
                 Kind::UnreadDir => {
                     painter.text(
-                        Pos2::new(cols.bar_x + 4.0, y),
+                        Pos2::new(bar_x, y),
                         Align2::LEFT_CENTER,
                         "[Not Read]",
                         font.clone(),
@@ -189,7 +159,7 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
                 }
                 Kind::MountPoint => {
                     painter.text(
-                        Pos2::new(cols.bar_x + 4.0, y),
+                        Pos2::new(bar_x, y),
                         Align2::LEFT_CENTER,
                         "[Mount Point]",
                         font.clone(),
@@ -218,7 +188,7 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
                             egui::StrokeKind::Inside,
                         );
                         painter.text(
-                            Pos2::new(cols.pct_x + theme::COL_PERCENT_NUM, y),
+                            Pos2::new(cols.text_right(left, PCT), y),
                             Align2::RIGHT_CENTER,
                             format::percent(p),
                             font.clone(),
@@ -229,179 +199,112 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
             }
 
             // Numbers
-            painter.text(
-                Pos2::new(cols.size_x + theme::COL_SIZE, y),
-                Align2::RIGHT_CENTER,
-                format::size(tree.size(row.node)),
-                font.clone(),
-                text_color,
-            );
+            let number = |col: usize, text: String| {
+                painter.text(
+                    Pos2::new(cols.text_right(left, col), y),
+                    Align2::RIGHT_CENTER,
+                    text,
+                    font.clone(),
+                    text_color,
+                );
+            };
+            number(SIZE, format::size(tree.size(row.node)));
             if tree.is_dir_like(row.node) && kind != Kind::DotEntry {
-                painter.text(
-                    Pos2::new(cols.items_x + theme::COL_COUNT, y),
-                    Align2::RIGHT_CENTER,
-                    format::grouped(tree.total_items(row.node) as u64),
-                    font.clone(),
-                    text_color,
-                );
-                painter.text(
-                    Pos2::new(cols.files_x + theme::COL_COUNT, y),
-                    Align2::RIGHT_CENTER,
-                    format::grouped(tree.total_files(row.node) as u64),
-                    font.clone(),
-                    text_color,
-                );
-                painter.text(
-                    Pos2::new(cols.subdirs_x + theme::COL_COUNT, y),
-                    Align2::RIGHT_CENTER,
+                number(ITEMS, format::grouped(tree.total_items(row.node) as u64));
+                number(FILES, format::grouped(tree.total_files(row.node) as u64));
+                number(
+                    SUBDIRS,
                     format::grouped(tree.total_subdirs(row.node) as u64),
-                    font.clone(),
-                    text_color,
                 );
             } else if kind == Kind::DotEntry {
-                painter.text(
-                    Pos2::new(cols.items_x + theme::COL_COUNT, y),
-                    Align2::RIGHT_CENTER,
-                    format::grouped(tree.total_items(row.node) as u64),
-                    font.clone(),
-                    text_color,
-                );
+                number(ITEMS, format::grouped(tree.total_items(row.node) as u64));
             }
-            painter.text(
-                Pos2::new(cols.right, y),
-                Align2::RIGHT_CENTER,
-                time::format(tree.mtime(row.node), app.utc_offset),
-                font.clone(),
-                text_color,
-            );
+            number(MTIME, time::format(tree.mtime(row.node), app.utc_offset));
 
             if resp.secondary_clicked() {
-                app.select(row.node, false);
+                app.select_for_menu(row.node);
             }
             resp.context_menu(|ui| crate::menus::context_menu(app, ui));
+            let mods = ui.input(|i| i.modifiers);
             if resp.double_clicked() {
-                clicked = Some((row.node, false, true));
+                clicked = Some((row.node, false, true, mods));
             } else if resp.clicked() {
                 let on_marker = resp
                     .interact_pointer_pos()
                     .map(|p| marker_rect.contains(p))
                     .unwrap_or(false);
-                clicked = Some((row.node, on_marker && expandable, false));
+                clicked = Some((row.node, on_marker && expandable, false, mods));
             }
         }
     });
 
     // Header, shifted by the sideways scroll so it stays over its columns.
-    let content_left = out.inner_rect.left() - out.state.clamped_offset().x;
-    let content_width = out.inner_rect.width().max(MIN_WIDTH);
-    let cols = columns(content_left + 4.0, content_width - 8.0);
-    let painter = ui.painter_at(header_rect);
-    painter.rect_filled(header_rect, 0.0, ui.visuals().faint_bg_color);
-    let y = header_rect.center().y;
-    let headers: [(Column, f32, f32, Align2, &str); 8] = [
-        (
-            Column::Name,
-            content_left + 4.0,
-            cols.name_w,
-            Align2::LEFT_CENTER,
-            "Name",
-        ),
-        (
-            Column::PercentBar,
-            cols.bar_x,
-            theme::PERCENT_BAR_COLUMN_WIDTH,
-            Align2::LEFT_CENTER,
-            "Subtree Percentage",
-        ),
-        (
-            Column::PercentNum,
-            cols.pct_x,
-            theme::COL_PERCENT_NUM,
-            Align2::RIGHT_CENTER,
-            "%",
-        ),
-        (
-            Column::Size,
-            cols.size_x,
-            theme::COL_SIZE,
-            Align2::RIGHT_CENTER,
-            "Size",
-        ),
-        (
-            Column::Items,
-            cols.items_x,
-            theme::COL_COUNT,
-            Align2::RIGHT_CENTER,
-            "Items",
-        ),
-        (
-            Column::Files,
-            cols.files_x,
-            theme::COL_COUNT,
-            Align2::RIGHT_CENTER,
-            "Files",
-        ),
-        (
-            Column::Subdirs,
-            cols.subdirs_x,
-            theme::COL_COUNT,
-            Align2::RIGHT_CENTER,
-            "Subdirs",
-        ),
-        (
-            Column::Mtime,
-            cols.mtime_x,
-            theme::COL_MTIME,
-            Align2::RIGHT_CENTER,
-            "Last Modified",
-        ),
+    let left = out.inner_rect.left() - out.state.clamped_offset().x;
+    let sort = |c: Column| (app.sort.column == c).then_some(app.sort.ascending);
+    let cells = [
+        columns::HeaderCell {
+            label: "Name",
+            right: false,
+            sort: sort(Column::Name),
+        },
+        columns::HeaderCell {
+            label: "Subtree Percentage",
+            right: false,
+            sort: sort(Column::PercentBar),
+        },
+        columns::HeaderCell {
+            label: "%",
+            right: true,
+            sort: sort(Column::PercentNum),
+        },
+        columns::HeaderCell {
+            label: "Size",
+            right: true,
+            sort: sort(Column::Size),
+        },
+        columns::HeaderCell {
+            label: "Items",
+            right: true,
+            sort: sort(Column::Items),
+        },
+        columns::HeaderCell {
+            label: "Files",
+            right: true,
+            sort: sort(Column::Files),
+        },
+        columns::HeaderCell {
+            label: "Subdirs",
+            right: true,
+            sort: sort(Column::Subdirs),
+        },
+        columns::HeaderCell {
+            label: "Last Modified",
+            right: true,
+            sort: sort(Column::Mtime),
+        },
     ];
-    for (col, x, w, align, label) in headers {
-        let rect = Rect::from_min_size(
-            Pos2::new(x, header_rect.top()),
-            Vec2::new(w, theme::ROW_HEIGHT),
-        );
-        let resp = ui.interact(rect, ui.scope_id().with(("hdr", label)), Sense::click());
-        let text = label.to_string();
-        let sorted_here = app.sort.column == col;
-        let anchor = if align == Align2::LEFT_CENTER {
-            Pos2::new(x, y)
-        } else {
-            Pos2::new(x + w - if sorted_here { 12.0 } else { 0.0 }, y)
-        };
-        if sorted_here {
-            let cx = if align == Align2::LEFT_CENTER {
-                x + w - 8.0
-            } else {
-                x + w - 5.0
-            };
-            triangle(
-                &painter,
-                Pos2::new(cx, y),
-                4.0,
-                if app.sort.ascending {
-                    Dir::Up
-                } else {
-                    Dir::Down
-                },
-                weak,
-            );
-        }
-        painter.text(
-            anchor,
-            align,
-            text,
-            font.clone(),
-            if resp.hovered() { text_color } else { weak },
-        );
-        if resp.clicked() {
-            app.set_sort(col);
+    if let Some(i) = columns::header(ui, &mut app.tree_columns, header_rect, left, &cells, "tree") {
+        const ORDER: [Column; 8] = [
+            Column::Name,
+            Column::PercentBar,
+            Column::PercentNum,
+            Column::Size,
+            Column::Items,
+            Column::Files,
+            Column::Subdirs,
+            Column::Mtime,
+        ];
+        if let Some(c) = ORDER.get(i) {
+            app.set_sort(*c);
         }
     }
 
-    if let Some((node, toggle, double)) = clicked {
+    if let Some((node, toggle, double, mods)) = clicked {
         if toggle {
             app.toggle_expand(node);
+        } else if mods.ctrl || mods.shift {
+            let order = app.row_order();
+            app.select_in(node, mods, &order);
         } else {
             app.select(node, false);
             if double
@@ -415,6 +318,88 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
             }
         }
     }
+}
+
+/// The `<Free Space>` row under the root: the volume's available bytes and
+/// their share of the volume, in the weak colour since it is not an item.
+fn free_space_row(
+    app: &OxTreeApp,
+    painter: &egui::Painter,
+    rect: Rect,
+    font: &egui::FontId,
+    weak: Color32,
+) {
+    let Some((avail, size)) = app.free_space else {
+        return;
+    };
+    let cols = &app.tree_columns;
+    let left = rect.left();
+    let y = rect.center().y;
+    let indent = left + columns::PAD + theme::INDENT;
+    let icon_x = indent + 16.0;
+    let disk = Rect::from_center_size(
+        Pos2::new(icon_x + theme::ICON_SIZE / 2.0, y),
+        Vec2::new(theme::ICON_SIZE, theme::ICON_SIZE * 0.6),
+    );
+    painter.rect_stroke(
+        disk,
+        2.0,
+        Stroke::new(1.0, theme::ICON_MOUNT),
+        egui::StrokeKind::Inside,
+    );
+    painter.text(
+        Pos2::new(icon_x + theme::ICON_SIZE + 5.0, y),
+        Align2::LEFT_CENTER,
+        "<Free Space>",
+        font.clone(),
+        weak,
+    );
+    let bar_x = cols.x(left, BAR) + columns::PAD;
+    let bar_rect = Rect::from_min_max(
+        Pos2::new(bar_x, rect.top() + 3.0),
+        Pos2::new(cols.text_right(left, BAR), rect.bottom() - 3.0),
+    );
+    let p = if size > 0 {
+        avail as f64 * 100.0 / size as f64
+    } else {
+        0.0
+    };
+    painter.rect_filled(bar_rect, 0.0, theme::PERCENT_BAR_BACKGROUND);
+    let fill = Rect::from_min_size(
+        bar_rect.min,
+        Vec2::new(
+            bar_rect.width() * (p as f32 / 100.0).clamp(0.0, 1.0),
+            bar_rect.height(),
+        ),
+    );
+    painter.rect_filled(fill, 0.0, theme::FREE_SPACE);
+    painter.rect_stroke(
+        bar_rect,
+        0.0,
+        Stroke::new(1.0, Color32::from_gray(0x60)),
+        egui::StrokeKind::Inside,
+    );
+    painter.text(
+        Pos2::new(cols.text_right(left, PCT), y),
+        Align2::RIGHT_CENTER,
+        format::percent(p),
+        font.clone(),
+        weak,
+    );
+    painter.text(
+        Pos2::new(cols.text_right(left, SIZE), y),
+        Align2::RIGHT_CENTER,
+        format::size(avail),
+        font.clone(),
+        weak,
+    );
+    painter.text(
+        Pos2::new(cols.text_right(left, MTIME), y),
+        Align2::RIGHT_CENTER,
+        format!("of {}", format::size(size)),
+        font.clone(),
+        weak,
+    );
 }
 
 #[derive(Clone, Copy)]
@@ -545,7 +530,7 @@ pub fn handle_keys(app: &mut OxTreeApp, ctx: &egui::Context) {
     if ctx.memory(|m| m.focused().is_some()) || app.tree.is_none() {
         return;
     }
-    let (up, down, left, right, home, end, enter) = ctx.input(|i| {
+    let (up, down, left, right, home, end, enter, all) = ctx.input(|i| {
         (
             i.key_pressed(egui::Key::ArrowUp),
             i.key_pressed(egui::Key::ArrowDown),
@@ -554,8 +539,14 @@ pub fn handle_keys(app: &mut OxTreeApp, ctx: &egui::Context) {
             i.key_pressed(egui::Key::Home),
             i.key_pressed(egui::Key::End),
             i.key_pressed(egui::Key::Enter),
+            i.modifiers.ctrl && i.key_pressed(egui::Key::A),
         )
     });
+    if all {
+        let order = app.row_order();
+        app.select_all(&order);
+        return;
+    }
     if !(up || down || left || right || home || end || enter) {
         return;
     }
@@ -599,7 +590,7 @@ pub fn handle_keys(app: &mut OxTreeApp, ctx: &egui::Context) {
     } else if enter && has_children {
         app.toggle_expand(sel);
     }
-    if let Some(t) = target {
+    if let Some(t) = target.filter(|&t| t != NO_NODE) {
         app.select(t, false);
         app.scroll_to_selected = true;
     }

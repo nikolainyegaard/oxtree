@@ -93,6 +93,24 @@ pub struct Volume {
     pub avail: u64,
 }
 
+/// Available and total bytes of the filesystem holding `path`, from `df`.
+pub fn free_space(path: &Path) -> Option<(u64, u64)> {
+    let out = std::process::Command::new("df")
+        .args(["-B1", "--output=avail,size"])
+        .arg(path)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut fields = text.lines().nth(1)?.split_whitespace();
+    let avail = fields.next()?.parse().ok()?;
+    let size = fields.next()?.parse().ok()?;
+    Some((avail, size))
+}
+
 /// Every readable local filesystem with the sizes `df` reports, sorted by
 /// mount path. `df` runs as a child process; without it the list is empty
 /// and the dialog still has its text field.

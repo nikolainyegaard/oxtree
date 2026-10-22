@@ -383,9 +383,17 @@ fn read_dir(shared: &Shared, options: &ScanOptions, job: &Job) -> DirRead {
             } else {
                 Kind::Special
             };
+            // A file with several hard links is on disk once. Each link
+            // gets an equal share, so the totals add up to one copy
+            // whichever link the walk met first; QDirStat does the same.
+            let links = if kind == Kind::File {
+                md.nlink().max(1)
+            } else {
+                1
+            };
             read.record.files.push(FileRecord {
                 name: entry_name,
-                size: md.blocks() * 512,
+                size: md.blocks() * 512 / links,
                 mtime: md.mtime(),
                 mode: md.mode(),
                 kind,
@@ -410,6 +418,7 @@ mod tests {
         std::fs::write(dir.join("a/b/deep"), vec![0u8; 1000]).unwrap();
         std::fs::write(dir.join(".snapshot/x/hidden"), vec![0u8; 1000]).unwrap();
         std::os::unix::fs::symlink("top.txt", dir.join("link")).unwrap();
+        std::fs::hard_link(dir.join("a/mid.bin"), dir.join("a/b/mid-link.bin")).unwrap();
 
         let (tree, _) = scan_blocking(
             &dir,
@@ -434,8 +443,23 @@ mod tests {
         assert_eq!(tree.kind(snap), Kind::UnreadDir);
         assert_eq!(tree.child_count(snap), 0);
         let a = tree.children(0).find(|&c| tree.name(c) == "a").unwrap();
-        assert!(tree.size(a) >= 71_000);
-        assert_eq!(tree.total_files(a), 2);
+        assert!(
+            tree.size(a) >= 71_000 && tree.size(a) < 2 * 71_000,
+            "{}",
+            tree.size(a)
+        );
+        assert_eq!(tree.total_files(a), 3);
+        let b = tree.children(a).find(|&c| tree.name(c) == "b").unwrap();
+        let mid = tree.children(a).find(|&c| tree.name(c) == "mid.bin");
+        let dot = tree.children(a).find(|&c| tree.kind(c) == Kind::DotEntry);
+        let mid = mid
+            .or_else(|| dot.and_then(|d| tree.children(d).find(|&c| tree.name(c) == "mid.bin")))
+            .unwrap();
+        let link = tree
+            .children(b)
+            .find(|&c| tree.name(c) == "mid-link.bin")
+            .unwrap();
+        assert_eq!(tree.size(mid), tree.size(link), "each hard link gets half");
         let dot = tree
             .children(0)
             .find(|&c| tree.kind(c) == Kind::DotEntry)
