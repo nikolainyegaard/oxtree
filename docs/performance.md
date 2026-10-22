@@ -73,6 +73,16 @@ Facts behind the walker, so nobody re-derives them:
 
 Nothing runs before the first frame except reading the cleanup configuration and `date +%z`. The scan starts from the constructor on its own threads. The release profile is `lto = "fat"`, `codegen-units = 1`, `panic = "abort"`, `strip = true`. The dynamic loader is five shared objects and under 300 relocations, which is noise.
 
+## Diagnostic switches
+
+Environment variables and flags read at startup, for measuring and for bisecting problems. None of them is a user setting.
+
+| Switch | Effect |
+|--------|--------|
+| `OXTREE_STATS=1` | Prints treemap rebuild counts and process CPU time once a second to stderr |
+| `OXTREE_REBUILD_DELAY_MS=200` | Waits for the treemap size to settle before rebuilding (QDirStat's behaviour); default 0 |
+| `--screenshot FILE.ppm` | Writes the first full frame and prints its minimum alpha and translucent pixel count to stderr; must say `min 255` |
+
 ## Dead ends
 
 Recorded in `gotchas.md` under the spike date, with the sources in the spike's own notes. Short version: io_uring statx, custom directory syscalls, reading filesystem metadata tables the way WizTree reads the MFT, allocator swaps without a measurement, and a software renderer to shed Mesa.

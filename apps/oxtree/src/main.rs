@@ -95,6 +95,16 @@ struct Shell {
 }
 
 impl eframe::App for Shell {
+    /// eframe's default clear colour has an alpha of 180, and the window
+    /// surface is declared opaque, so on Wayland every pixel the views do not
+    /// paint themselves blended with whatever the compositor had there
+    /// before: stale frames, the wallpaper, the window at its old position.
+    /// The tree area and the treemap panel have no frame fill, so that was a
+    /// third of the window. An opaque clear colour ends it.
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        visuals.extreme_bg_color.to_normalized_gamma_f32()
+    }
+
     fn ui(&mut self, root: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = root.ctx().clone();
         if self.first_frame {
@@ -172,6 +182,12 @@ fn screenshot_step(app: &mut OxTreeApp, ctx: &egui::Context) {
     ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(
         egui::ScreenshotCallback::new(move |img| {
             let [w, h] = img.size;
+            let min_alpha = img.pixels.iter().map(|p| p.a()).min().unwrap_or(0);
+            let translucent = img.pixels.iter().filter(|p| p.a() < 255).count();
+            eprintln!(
+                "screenshot alpha: min {min_alpha}, {translucent} of {} pixels below 255",
+                img.pixels.len()
+            );
             let mut ppm = format!("P6\n{w} {h}\n255\n").into_bytes();
             for px in &img.pixels {
                 ppm.extend_from_slice(&[px.r(), px.g(), px.b()]);
