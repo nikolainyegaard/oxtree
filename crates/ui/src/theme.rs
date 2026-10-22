@@ -62,6 +62,9 @@ pub const STATUS_TIMEOUT: Duration = Duration::from_millis(3000);
 
 pub const ROW_HEIGHT: f32 = 20.0;
 pub const INDENT: f32 = 18.0;
+/// The name column never gets narrower than this; the tree scrolls
+/// sideways instead.
+pub const COL_NAME_MIN: f32 = 400.0;
 pub const COL_PERCENT_NUM: f32 = 56.0;
 pub const COL_SIZE: f32 = 84.0;
 pub const COL_COUNT: f32 = 72.0;

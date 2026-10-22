@@ -19,6 +19,17 @@ struct Columns {
     right: f32,
 }
 
+/// Below this row width the tree scrolls sideways instead of squeezing the
+/// name column: the name's minimum plus every fixed column and gap.
+const MIN_WIDTH: f32 = theme::COL_NAME_MIN
+    + theme::PERCENT_BAR_COLUMN_WIDTH
+    + theme::COL_PERCENT_NUM
+    + theme::COL_SIZE
+    + 3.0 * theme::COL_COUNT
+    + theme::COL_MTIME
+    + 7.0 * theme::COL_GAP
+    + 8.0;
+
 fn columns(left: f32, width: f32) -> Columns {
     let right = left + width;
     let mtime_x = right - theme::COL_MTIME;
@@ -48,115 +59,13 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
     let text_color = ui.visuals().strong_text_color();
     let weak = ui.visuals().weak_text_color();
 
-    // Header
+    // The header band is reserved here and painted after the rows, since
+    // it follows their sideways scroll and the rows' viewport is only known
+    // once the scroll area has run.
     let (header_rect, _) = ui.allocate_exact_size(
         Vec2::new(ui.available_width(), theme::ROW_HEIGHT),
         Sense::hover(),
     );
-    let cols = columns(header_rect.left() + 4.0, header_rect.width() - 8.0);
-    let painter = ui.painter_at(header_rect);
-    painter.rect_filled(header_rect, 0.0, ui.visuals().faint_bg_color);
-    let y = header_rect.center().y;
-    let headers: [(Column, f32, f32, Align2, &str); 8] = [
-        (
-            Column::Name,
-            header_rect.left() + 4.0,
-            cols.name_w,
-            Align2::LEFT_CENTER,
-            "Name",
-        ),
-        (
-            Column::PercentBar,
-            cols.bar_x,
-            theme::PERCENT_BAR_COLUMN_WIDTH,
-            Align2::LEFT_CENTER,
-            "Subtree Percentage",
-        ),
-        (
-            Column::PercentNum,
-            cols.pct_x,
-            theme::COL_PERCENT_NUM,
-            Align2::RIGHT_CENTER,
-            "%",
-        ),
-        (
-            Column::Size,
-            cols.size_x,
-            theme::COL_SIZE,
-            Align2::RIGHT_CENTER,
-            "Size",
-        ),
-        (
-            Column::Items,
-            cols.items_x,
-            theme::COL_COUNT,
-            Align2::RIGHT_CENTER,
-            "Items",
-        ),
-        (
-            Column::Files,
-            cols.files_x,
-            theme::COL_COUNT,
-            Align2::RIGHT_CENTER,
-            "Files",
-        ),
-        (
-            Column::Subdirs,
-            cols.subdirs_x,
-            theme::COL_COUNT,
-            Align2::RIGHT_CENTER,
-            "Subdirs",
-        ),
-        (
-            Column::Mtime,
-            cols.mtime_x,
-            theme::COL_MTIME,
-            Align2::RIGHT_CENTER,
-            "Last Modified",
-        ),
-    ];
-    for (col, x, w, align, label) in headers {
-        let rect = Rect::from_min_size(
-            Pos2::new(x, header_rect.top()),
-            Vec2::new(w, theme::ROW_HEIGHT),
-        );
-        let resp = ui.interact(rect, ui.scope_id().with(("hdr", label)), Sense::click());
-        let text = label.to_string();
-        let sorted_here = app.sort.column == col;
-        let anchor = if align == Align2::LEFT_CENTER {
-            Pos2::new(x, y)
-        } else {
-            Pos2::new(x + w - if sorted_here { 12.0 } else { 0.0 }, y)
-        };
-        if sorted_here {
-            let cx = if align == Align2::LEFT_CENTER {
-                x + w - 8.0
-            } else {
-                x + w - 5.0
-            };
-            triangle(
-                &painter,
-                Pos2::new(cx, y),
-                4.0,
-                if app.sort.ascending {
-                    Dir::Up
-                } else {
-                    Dir::Down
-                },
-                weak,
-            );
-        }
-        painter.text(
-            anchor,
-            align,
-            text,
-            font.clone(),
-            if resp.hovered() { text_color } else { weak },
-        );
-        if resp.clicked() {
-            app.set_sort(col);
-        }
-    }
 
     // A treemap click earlier in this frame may have expanded ancestors;
     // the jump below has to see the rows as they are now, not as they were
@@ -174,7 +83,7 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
     app.scroll_to_selected = false;
 
     let mut clicked: Option<(u32, bool, bool)> = None; // node, toggle, double
-    let mut area = egui::ScrollArea::vertical()
+    let mut area = egui::ScrollArea::both()
         .auto_shrink([false, false])
         .id_salt("tree-rows");
     if let Some(i) = scroll_to {
@@ -182,9 +91,11 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
         let offset = i as f32 * (theme::ROW_HEIGHT + spacing) - ui.available_height() / 2.0;
         area = area.vertical_scroll_offset(offset.max(0.0));
     }
-    area.show_rows(ui, theme::ROW_HEIGHT, total, |ui, range| {
+    let out = area.show_rows(ui, theme::ROW_HEIGHT, total, |ui, range| {
         let Some(tree) = app.tree.clone() else { return };
-        let width = ui.available_width();
+        // Inside the scroll area the clip rect is the viewport; the rows
+        // are at least MIN_WIDTH wide, and the rest scrolls sideways.
+        let width = ui.clip_rect().width().max(MIN_WIDTH);
         for i in range {
             let Some(row) = app.rows.get(i).copied() else {
                 continue;
@@ -379,6 +290,114 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
             }
         }
     });
+
+    // Header, shifted by the sideways scroll so it stays over its columns.
+    let content_left = out.inner_rect.left() - out.state.clamped_offset().x;
+    let content_width = out.inner_rect.width().max(MIN_WIDTH);
+    let cols = columns(content_left + 4.0, content_width - 8.0);
+    let painter = ui.painter_at(header_rect);
+    painter.rect_filled(header_rect, 0.0, ui.visuals().faint_bg_color);
+    let y = header_rect.center().y;
+    let headers: [(Column, f32, f32, Align2, &str); 8] = [
+        (
+            Column::Name,
+            content_left + 4.0,
+            cols.name_w,
+            Align2::LEFT_CENTER,
+            "Name",
+        ),
+        (
+            Column::PercentBar,
+            cols.bar_x,
+            theme::PERCENT_BAR_COLUMN_WIDTH,
+            Align2::LEFT_CENTER,
+            "Subtree Percentage",
+        ),
+        (
+            Column::PercentNum,
+            cols.pct_x,
+            theme::COL_PERCENT_NUM,
+            Align2::RIGHT_CENTER,
+            "%",
+        ),
+        (
+            Column::Size,
+            cols.size_x,
+            theme::COL_SIZE,
+            Align2::RIGHT_CENTER,
+            "Size",
+        ),
+        (
+            Column::Items,
+            cols.items_x,
+            theme::COL_COUNT,
+            Align2::RIGHT_CENTER,
+            "Items",
+        ),
+        (
+            Column::Files,
+            cols.files_x,
+            theme::COL_COUNT,
+            Align2::RIGHT_CENTER,
+            "Files",
+        ),
+        (
+            Column::Subdirs,
+            cols.subdirs_x,
+            theme::COL_COUNT,
+            Align2::RIGHT_CENTER,
+            "Subdirs",
+        ),
+        (
+            Column::Mtime,
+            cols.mtime_x,
+            theme::COL_MTIME,
+            Align2::RIGHT_CENTER,
+            "Last Modified",
+        ),
+    ];
+    for (col, x, w, align, label) in headers {
+        let rect = Rect::from_min_size(
+            Pos2::new(x, header_rect.top()),
+            Vec2::new(w, theme::ROW_HEIGHT),
+        );
+        let resp = ui.interact(rect, ui.scope_id().with(("hdr", label)), Sense::click());
+        let text = label.to_string();
+        let sorted_here = app.sort.column == col;
+        let anchor = if align == Align2::LEFT_CENTER {
+            Pos2::new(x, y)
+        } else {
+            Pos2::new(x + w - if sorted_here { 12.0 } else { 0.0 }, y)
+        };
+        if sorted_here {
+            let cx = if align == Align2::LEFT_CENTER {
+                x + w - 8.0
+            } else {
+                x + w - 5.0
+            };
+            triangle(
+                &painter,
+                Pos2::new(cx, y),
+                4.0,
+                if app.sort.ascending {
+                    Dir::Up
+                } else {
+                    Dir::Down
+                },
+                weak,
+            );
+        }
+        painter.text(
+            anchor,
+            align,
+            text,
+            font.clone(),
+            if resp.hovered() { text_color } else { weak },
+        );
+        if resp.clicked() {
+            app.set_sort(col);
+        }
+    }
 
     if let Some((node, toggle, double)) = clicked {
         if toggle {

@@ -8,6 +8,7 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The tree scrolls sideways: the Name column keeps at least 400 px and the other columns run past the right edge when the window is narrow, with the header following; the header also lines up with the rows now instead of sitting a scrollbar's width to the right
 - Only Ubuntu Light and egui's icon font are bundled; the monospace face is gone and the two monospace labels use the proportional one
 - A `diagnostics` Cargo feature, off in release builds, holds the development tools: `OXTREE_STARTUP` startup timing, `OXTREE_STATS`, `--screenshot`, and the benchmark as its own `oxtree-bench` binary
 
