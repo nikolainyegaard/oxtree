@@ -6,9 +6,12 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-23
+
 ### Fixed
 
 - Cancel in the Open Directory dialog closes it even when nothing has been scanned yet, leaving an empty window
+- The release build no longer prints a first frame timing line to the terminal; that line belongs to the diagnostics build
 
 ### Changed
 
@@ -38,5 +41,6 @@ The first release.
 - File names in any script, through the system's fonts
 - A `diagnostics` Cargo feature with startup timing, a screenshot mode and a benchmark binary, off in release builds
 
-[Unreleased]: https://github.com/nikolainyegaard/oxtree/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/nikolainyegaard/oxtree/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/nikolainyegaard/oxtree/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/nikolainyegaard/oxtree/releases/tag/v0.1.0

@@ -177,3 +177,12 @@ pub fn screenshot_step(app: &mut OxTreeApp, ctx: &egui::Context) {
         }),
     ));
 }
+
+/// The one line the performance budget is measured with: time from `main`
+/// to the first frame, on stderr.
+pub fn first_frame(started: std::time::Instant) {
+    eprintln!(
+        "first frame after {:.1} ms",
+        started.elapsed().as_secs_f64() * 1000.0
+    );
+}

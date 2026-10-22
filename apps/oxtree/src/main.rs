@@ -18,6 +18,7 @@ mod diagnostics;
 #[cfg(not(feature = "diagnostics"))]
 mod diagnostics {
     pub fn startup_mark(_label: &str) {}
+    pub fn first_frame(_started: std::time::Instant) {}
     pub fn install_logger() {}
     pub fn configure(_app: &mut oxtree_ui::OxTreeApp, screenshot: Option<std::path::PathBuf>) {
         if screenshot.is_some() {
@@ -309,10 +310,7 @@ impl eframe::App for Shell {
         if self.first_frame {
             self.first_frame = false;
             startup_mark("first update called: event loop warm-up, first redraw request");
-            eprintln!(
-                "first frame after {:.1} ms",
-                self.started.elapsed().as_secs_f64() * 1000.0
-            );
+            diagnostics::first_frame(self.started);
             oxtree_native::root::signal_ready();
         }
         let app = &mut self.app;

@@ -11,7 +11,7 @@ Checked in the change checklist. A change that moves one says so in the commit b
 | Stripped release binary | 10 MB | 9.1 MB (plain build; the diagnostics build is 9.3 MB) | `ls -l target/release/oxtree` |
 | Scan of /usr, 352k nodes, warm, on mains | 150 ms | 125 ms (250 ms on battery with the powersave governor) | `target/release/oxtree-bench /usr` from a `--features diagnostics` build |
 | Treemap layout plus render at 1900x600 | 15 ms | 1.7 + 7.7 ms | same |
-| First frame, performance power profile | 50 ms | 34 ms (86 to 90 ms in the balanced profile on battery) | `target/release/oxtree /usr 2>&1 \| grep 'first frame'`; stages with `OXTREE_STARTUP=1`; check `/sys/firmware/acpi/platform_profile` first |
+| First frame, performance power profile | 50 ms | 34 ms (86 to 90 ms in the balanced profile on battery) | `target/release/oxtree /usr 2>&1 \| grep 'first frame'` from a `--features diagnostics` build; stages with `OXTREE_STARTUP=1`; check `/sys/firmware/acpi/platform_profile` first |
 | RSS with /usr loaded and the window open | 120 MB | 133 MB (115 MB with `MALLOC_ARENA_MAX=2`) | `grep -E '^(Rss\|Pss\|Anonymous)' /proc/$(pgrep -n -x oxtree)/smaps_rollup` |
 | Tree memory per node | 56 bytes | about 55 bytes | arithmetic on the arena arrays, see below |
 
@@ -124,6 +124,7 @@ Environment variables and flags read at startup, for measuring and for bisecting
 | `OXTREE_STARTUP=1` | Prints the startup stages, about ten lines, each with the time since the previous one; `OXTREE_T0=$(date +%s%N)` on the same command line adds the exec and loader time |
 | `OXTREE_STARTUP=2` | The stages plus every log record from eframe, winit, glutin and the Wayland client that followed a gap of a quarter millisecond or more |
 | `OXTREE_STARTUP=/path/to/file` | Everything, some 2 500 lines, written to that file instead of the terminal |
+| the `first frame after N ms` line | Printed to stderr on every start of a diagnostics build; the plain build prints nothing |
 | `--screenshot FILE.ppm` | Writes the first full frame and prints its minimum alpha and translucent pixel count to stderr; must say `min 255` |
 | `oxtree-bench PATH` | Scan, layout, render, cache, types, duplicates, CSV and search timings for one tree, to stdout; `OXTREE_CROSS_FILESYSTEMS=0` keeps the scan on one filesystem |
 
