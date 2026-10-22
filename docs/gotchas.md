@@ -31,6 +31,12 @@ Dated notes on things that look wrong until you know why, and on dead ends. Add 
 
 - **eframe's `clipboard` feature is on by name.** The dependency disables default features to keep wgpu and accesskit out, and the first cut forgot clipboard along with them. Copy Path still worked because `Context::copy_text` goes out through the same crates only for writing; reading the clipboard for Ctrl+V needs the feature. Any future trimming of the eframe feature list must keep it.
 
+## 2026-10-22, startup
+
+- **Starting the scan before the window delays the window.** The walk is syscall-bound on every core, so the single-threaded window setup (EGL init, shader compile) runs slower beside it: the empty window appears about 40 ms later and the tree about 90 ms earlier. The trade was taken for content; the numbers are in performance.md. Fewer early threads do not help: at 7 the tree gain halves, at 4 it is gone.
+- **Measure on mains.** On battery the powersave governor more than doubles the scan time (250 ms against 110 ms for /usr). Half an afternoon went into numbers that were only the battery.
+- **The dlopen figure in the startup map was measured with a one-off script outside the app**, not with anything in the repo, which is Rust only.
+
 ## 2026-10-22, root
 
 - **Rescan as Root is a second process that replaces the first.** Linux cannot raise a running process's privileges, so File, Rescan as Root runs `pkexec env WAYLAND_DISPLAY=... DISPLAY=... OXTREE_CONFIG_DIR=... oxtree PATH`. pkexec clears the environment, so the display variables are passed explicitly, and `WAYLAND_DISPLAY` is made absolute because root's `XDG_RUNTIME_DIR` is not the user's. The root instance reads the user's config through `OXTREE_CONFIG_DIR` and `save_cleanups` refuses to write as root, so no file ends up owned by root (QDirStat fixes ownership after the fact instead). The root instance touches `$XDG_RUNTIME_DIR/oxtree-root-PID` after its first frame and the starting instance closes when it sees the file, so the user sees one window hand over to the next; a dismissed or refused dialog (pkexec exits 126 or 127) leaves the first window as it was. The child's stdout and stderr are null, not pipes: once the parent is gone a pipe would be closed and the child's first print would fail. The polkit dialog shows a generic message unless `packaging/com.github.nikolainyegaard.oxtree.policy` is installed and the binary is at `/usr/bin/oxtree`, which is what the action file's `exec.path` names. Tested by the user on KDE Wayland; untested on GNOME and X11.

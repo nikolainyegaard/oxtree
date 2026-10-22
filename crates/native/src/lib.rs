@@ -12,4 +12,4 @@ pub mod run;
 pub mod trash;
 pub mod walker;
 
-pub use walker::{scan, ScanEvent, ScanHandle, ScanOptions};
+pub use walker::{scan, ScanEvent, ScanHandle, ScanOptions, Wake};

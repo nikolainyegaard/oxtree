@@ -9,7 +9,7 @@ Checked in the change checklist. A change that moves one says so in the commit b
 | Measure | Budget | 0.1.0 | How to measure |
 |---------|--------|-------|----------------|
 | Stripped release binary | 10 MB | 8.4 MB | `ls -l target/release/oxtree` |
-| Scan of /usr, 352k nodes, warm | 150 ms | 125 ms | `target/release/oxtree --bench /usr` |
+| Scan of /usr, 352k nodes, warm, on mains | 150 ms | 125 ms (250 ms on battery with the powersave governor) | `target/release/oxtree --bench /usr` |
 | Treemap layout plus render at 1900x600 | 15 ms | 1.7 + 7.7 ms | same |
 | First frame | 100 ms | 82 to 109 ms | `target/release/oxtree /usr 2>&1 \| grep 'first frame'`; stages with `OXTREE_STARTUP=1` |
 | RSS with /usr loaded and the window open | 120 MB | 133 MB (115 MB with `MALLOC_ARENA_MAX=2`) | `grep -E '^(Rss\|Pss\|Anonymous)' /proc/$(pgrep -n -x oxtree)/smaps_rollup` |
@@ -79,7 +79,7 @@ Where the time before the first frame goes, measured 2026-10-22 with `OXTREE_STA
 |-------|---:|------------|
 | exec, dynamic loader, static init | 3 to 4 | Five shared objects, under 300 relocations; `--help` round-trips in 2 ms |
 | Wayland connection, registry roundtrip, globals bound | 10 to 17 | winit's event loop and the smithay client toolkit |
-| EGL display init and config choice | 39 to 48 | `dlopen` of libEGL_mesa pulls in libgallium and libLLVM, 210 MB of mapped library; the dlopen alone measures 26 ms from Python. The largest single item and not ours |
+| EGL display init and config choice | 39 to 48 | `dlopen` of libEGL_mesa pulls in libgallium and libLLVM, 210 MB of mapped library; a bare `dlopen` of that one library, timed on its own outside the app, takes 26 ms. The largest single item and not ours |
 | Wayland window, egui-winit state, clipboard | 4 to 7 | xdg surface, decorations, data-control clipboard |
 | EGL surface, make current, swap interval | 2 to 3 | |
 | egui_glow painter: shader compile, link, VAO | 8 to 10 | Mesa's shader cache makes no measurable difference, so this is the cost even when cached |
@@ -90,12 +90,24 @@ Where the time before the first frame goes, measured 2026-10-22 with `OXTREE_STA
 
 Experiments that did not move it: `LIBGL_ALWAYS_SOFTWARE=1` (same, llvmpipe loads the same LLVM), `MESA_SHADER_CACHE_DISABLE=true` (same), the X11 backend (105 to 119 ms, slower).
 
-What can be shaved, in order of what the user would notice:
+What was shaved, and what the measurements said:
 
-1. **Start the scan before the window.** The scan starts from the constructor, which runs after the 85 ms of window setup. Started at `main` entry it overlaps that setup, and the tree lands about 85 ms earlier. The first frame does not change; time to content does.
-2. **Load Mesa on a thread at `main` entry.** A `dlopen` of libEGL_mesa on a background thread while winit talks to the compositor; glutin then finds it mapped. Expected 15 to 25 ms off the first frame. Needs the `libloading` crate (small) since the workspace forbids `unsafe`; a missing or renamed library is ignored.
-3. **`date +%z` and the cleanups file on a thread at `main` entry**, collected in the constructor. 2 to 3 ms.
-4. **wgpu over Vulkan instead of glow** would avoid libgallium and libLLVM entirely, since the Intel Vulkan driver does not link LLVM. Whether wgpu's own instance, adapter and shader setup is cheaper is an experiment, not a known: build the spike with the wgpu feature and compare. Not done.
+1. **The scan starts at `main` entry, before the window.** Done. It is not a free overlap: the walk is syscall-bound on every core, and the single-threaded window setup slows down while it runs. Measured on battery (powersave governor, where a scan of /usr takes 250 ms instead of 110 ms on mains), three runs each:
+
+   | Scan start | Threads | First frame | Tree on screen |
+   |---|---:|---:|---:|
+   | after the window (before) | 14 | 85 to 97 ms | 365 to 378 ms |
+   | before the window | 14 | 110 to 167 ms | 256 to 319 ms |
+   | before the window | 7 | 97 to 120 ms | 310 to 335 ms |
+   | before the window | 4 | 96 to 122 ms | 416 to 424 ms |
+
+   The tree arrives about 90 ms earlier and the empty window about 40 ms later. Content is what a disk tool is launched for, so that is the default; `OXTREE_EARLY_SCAN=0` restores the old order and `OXTREE_THREADS=N` sets the worker count, both for measuring.
+2. **The scan threads wake the UI.** Done. Every scan event calls back into egui's `request_repaint`, so a finished scan is drawn on the next frame instead of on the next 100 ms poll. Same for later rescans.
+3. **`date +%z` and the cleanups file run on a thread started at `main` entry.** Done. The constructor's own cost went from 2 to 3 ms to 0.1 to 0.2 ms.
+4. **Load Mesa on a thread at `main` entry.** Not done. A `dlopen` of libEGL_mesa while winit talks to the compositor; glutin then finds it mapped. Expected 15 to 25 ms off the first frame, less now that the scan competes for the cores during setup. Needs the `libloading` crate since the workspace forbids `unsafe`.
+5. **wgpu over Vulkan instead of glow** would avoid libgallium and libLLVM entirely, since the Intel Vulkan driver does not link LLVM. Whether wgpu's own instance, adapter and shader setup is cheaper is an experiment, not a known: build the spike with the wgpu feature and compare. Not done.
+
+Measure on mains power with the governor in its normal state. On battery this laptop's powersave governor more than doubles the scan time, and every number above moves with it.
 
 The release profile is `lto = "fat"`, `codegen-units = 1`, `panic = "abort"`, `strip = true`.
 
@@ -107,7 +119,11 @@ Environment variables and flags read at startup, for measuring and for bisecting
 |--------|--------|
 | `OXTREE_STATS=1` | Prints treemap rebuild counts and process CPU time once a second to stderr |
 | `OXTREE_REBUILD_DELAY_MS=200` | Waits for the treemap size to settle before rebuilding (QDirStat's behaviour); default 0 |
-| `OXTREE_STARTUP=1` | Prints each startup stage with the time since the previous one, and every log record from eframe, winit, glutin, the Wayland client and egui the same way; `OXTREE_T0=$(date +%s%N)` on the same command line adds the exec and loader time |
+| `OXTREE_EARLY_SCAN=0` | Starts the scan from the constructor, after the window, instead of at `main` entry |
+| `OXTREE_THREADS=N` | Scan worker threads; default one per core, capped at 16 |
+| `OXTREE_STARTUP=1` | Prints the startup stages, about ten lines, each with the time since the previous one; `OXTREE_T0=$(date +%s%N)` on the same command line adds the exec and loader time |
+| `OXTREE_STARTUP=2` | The stages plus every log record from eframe, winit, glutin and the Wayland client that followed a gap of a quarter millisecond or more |
+| `OXTREE_STARTUP=/path/to/file` | Everything, some 2 500 lines, written to that file instead of the terminal |
 | `--screenshot FILE.ppm` | Writes the first full frame and prints its minimum alpha and translucent pixel count to stderr; must say `min 255` |
 
 ## Dead ends

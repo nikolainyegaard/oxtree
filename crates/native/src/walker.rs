@@ -89,9 +89,29 @@ struct Shared {
     cancel: Arc<AtomicBool>,
 }
 
+/// Something to call after every event so the UI wakes up at once instead
+/// of on its next poll. The UI sets it once its context exists, which may
+/// be after the scan started; until then it is a no-op.
+type WakeFn = Box<dyn Fn() + Send + Sync>;
+
+#[derive(Clone, Default)]
+pub struct Wake(Arc<Mutex<Option<WakeFn>>>);
+
+impl Wake {
+    pub fn set(&self, f: impl Fn() + Send + Sync + 'static) {
+        *self.0.lock().unwrap_or_else(|e| e.into_inner()) = Some(Box::new(f));
+    }
+
+    pub fn wake(&self) {
+        if let Some(f) = self.0.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            f();
+        }
+    }
+}
+
 /// Start scanning `root` on background threads. Progress and the finished
-/// tree arrive on the returned channel.
-pub fn scan(root: &Path, options: ScanOptions) -> ScanHandle {
+/// tree arrive on the returned channel; `wake` is called after each.
+pub fn scan(root: &Path, options: ScanOptions, wake: Wake) -> ScanHandle {
     let (tx, rx) = mpsc::channel();
     let cancel = Arc::new(AtomicBool::new(false));
     let handle = ScanHandle {
@@ -101,7 +121,7 @@ pub fn scan(root: &Path, options: ScanOptions) -> ScanHandle {
     let root = root.to_path_buf();
     std::thread::Builder::new()
         .name("oxtree-scan".into())
-        .spawn(move || run_scan(root, options, tx, cancel))
+        .spawn(move || run_scan(root, options, tx, wake, cancel))
         .ok();
     handle
 }
@@ -109,7 +129,7 @@ pub fn scan(root: &Path, options: ScanOptions) -> ScanHandle {
 /// Scan synchronously on the calling thread's helpers. Used by the headless
 /// benchmark and tests.
 pub fn scan_blocking(root: &Path, options: ScanOptions) -> Result<(Tree, Duration), String> {
-    let handle = scan(root, options);
+    let handle = scan(root, options, Wake::default());
     loop {
         match handle.events.recv() {
             Ok(ScanEvent::Done { tree, elapsed, .. }) => return Ok((*tree, elapsed)),
@@ -120,19 +140,29 @@ pub fn scan_blocking(root: &Path, options: ScanOptions) -> Result<(Tree, Duratio
     }
 }
 
-fn run_scan(root: PathBuf, options: ScanOptions, tx: Sender<ScanEvent>, cancel: Arc<AtomicBool>) {
+fn run_scan(
+    root: PathBuf,
+    options: ScanOptions,
+    tx: Sender<ScanEvent>,
+    wake: Wake,
+    cancel: Arc<AtomicBool>,
+) {
     let started = Instant::now();
+    let send = |ev: ScanEvent| {
+        let _ = tx.send(ev);
+        wake.wake();
+    };
     let root_md = match std::fs::symlink_metadata(&root) {
         Ok(md) if md.is_dir() => md,
         Ok(_) => {
-            let _ = tx.send(ScanEvent::Failed(format!(
+            send(ScanEvent::Failed(format!(
                 "{} is not a directory",
                 root.display()
             )));
             return;
         }
         Err(e) => {
-            let _ = tx.send(ScanEvent::Failed(format!(
+            send(ScanEvent::Failed(format!(
                 "Cannot read {}: {e}",
                 root.display()
             )));
@@ -179,7 +209,7 @@ fn run_scan(root: PathBuf, options: ScanOptions, tx: Sender<ScanEvent>, cancel: 
             let finished = pending == 0 || shared.cancel.load(Ordering::Relaxed);
             if finished || last_report.elapsed() >= Duration::from_millis(333) {
                 last_report = Instant::now();
-                let _ = tx.send(ScanEvent::Progress {
+                send(ScanEvent::Progress {
                     dirs: shared.dirs_done.load(Ordering::Relaxed),
                     items: shared.items.load(Ordering::Relaxed),
                     bytes: shared.bytes.load(Ordering::Relaxed) as u64,
@@ -193,7 +223,7 @@ fn run_scan(root: PathBuf, options: ScanOptions, tx: Sender<ScanEvent>, cancel: 
     });
 
     if shared.cancel.load(Ordering::Relaxed) {
-        let _ = tx.send(ScanEvent::Failed("Reading aborted.".into()));
+        send(ScanEvent::Failed("Reading aborted.".into()));
         return;
     }
 
@@ -209,14 +239,14 @@ fn run_scan(root: PathBuf, options: ScanOptions, tx: Sender<ScanEvent>, cancel: 
     let root_name = root.to_string_lossy().into_owned();
     match Tree::build(root_name, sorted) {
         Ok(tree) => {
-            let _ = tx.send(ScanEvent::Done {
+            send(ScanEvent::Done {
                 tree: Box::new(tree),
                 elapsed: started.elapsed(),
                 unreadable,
             });
         }
         Err(e) => {
-            let _ = tx.send(ScanEvent::Failed(e));
+            send(ScanEvent::Failed(e));
         }
     }
 }

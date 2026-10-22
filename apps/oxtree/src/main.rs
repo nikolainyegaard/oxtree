@@ -46,78 +46,118 @@ fn parse_args() -> Args {
     args
 }
 
-/// `OXTREE_STARTUP=1` prints where the time before the first frame goes.
-/// `OXTREE_T0` may carry the launching shell's epoch nanoseconds so the
-/// exec and loader stage is measured too.
-fn startup_mark(label: &str) {
-    thread_local! {
-        static LAST: std::cell::Cell<Option<Instant>> = const { std::cell::Cell::new(None) };
-    }
-    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    if !*ON.get_or_init(|| std::env::var_os("OXTREE_STARTUP").is_some()) {
-        return;
-    }
-    LAST.with(|last| {
-        let now = Instant::now();
-        let since = last.get().map(|l| (now - l).as_secs_f64() * 1000.0);
-        last.set(Some(now));
-        match since {
-            Some(ms) => eprintln!("startup  +{ms:7.2} ms  {label}"),
-            None => {
-                let from_shell = std::env::var("OXTREE_T0")
-                    .ok()
-                    .and_then(|t| t.parse::<u128>().ok())
-                    .and_then(|t0| {
-                        let now_ns = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .ok()?
-                            .as_nanos();
-                        Some((now_ns.saturating_sub(t0)) as f64 / 1e6)
-                    });
-                match from_shell {
-                    Some(ms) => eprintln!("startup  +{ms:7.2} ms  {label} (from the shell's exec)"),
-                    None => eprintln!("startup           {label}"),
-                }
-            }
-        }
-    });
+/// `OXTREE_STARTUP` prints where the time before the first frame goes:
+/// `1` the stages only, about ten lines; `2` the stages plus every log
+/// record from eframe, winit, glutin and the Wayland client that followed
+/// a gap of a quarter millisecond or more; a file path, everything, written
+/// to that file. `OXTREE_T0` may carry the launching shell's epoch
+/// nanoseconds so the exec and loader stage is measured too.
+struct Startup {
+    last: std::sync::Mutex<Option<Instant>>,
+    sink: std::sync::Mutex<Option<std::fs::File>>,
+    /// 0 off, 1 stages, 2 stages and slow records, 3 everything.
+    level: u8,
 }
 
-/// With `OXTREE_STARTUP=1`, every log record from eframe, winit, glutin,
-/// the Wayland client and egui is printed with the time since the last
-/// one, which is the only way to see where the window setup spends its
-/// time without a tracer.
-struct StartupLogger {
-    last: std::sync::Mutex<Option<Instant>>,
+static STARTUP: std::sync::OnceLock<Startup> = std::sync::OnceLock::new();
+
+fn startup() -> &'static Startup {
+    STARTUP.get_or_init(|| {
+        let value = std::env::var("OXTREE_STARTUP").unwrap_or_default();
+        let (level, sink) = match value.as_str() {
+            "" => (0, None),
+            "1" => (1, None),
+            "2" => (2, None),
+            path if path.starts_with('/') => (3, std::fs::File::create(path).ok()),
+            _ => (3, None),
+        };
+        Startup {
+            last: std::sync::Mutex::new(None),
+            sink: std::sync::Mutex::new(sink),
+            level,
+        }
+    })
 }
+
+impl Startup {
+    /// Milliseconds since the previous line, and the line itself.
+    fn emit(&self, since: Option<f64>, text: &str) {
+        let line = match since {
+            Some(ms) => format!("startup  +{ms:7.2} ms  {text}"),
+            None => format!("startup           {text}"),
+        };
+        let mut sink = self.sink.lock().unwrap_or_else(|e| e.into_inner());
+        match sink.as_mut() {
+            Some(f) => {
+                let _ = writeln!(f, "{line}");
+            }
+            None => eprintln!("{line}"),
+        }
+    }
+
+    fn since_last(&self) -> Option<f64> {
+        let now = Instant::now();
+        let mut last = self.last.lock().unwrap_or_else(|e| e.into_inner());
+        let since = last.map(|l| (now - l).as_secs_f64() * 1000.0);
+        *last = Some(now);
+        since
+    }
+}
+
+fn startup_mark(label: &str) {
+    let st = startup();
+    if st.level == 0 {
+        return;
+    }
+    let since = st.since_last();
+    if since.is_some() {
+        st.emit(since, label);
+        return;
+    }
+    let from_shell = std::env::var("OXTREE_T0")
+        .ok()
+        .and_then(|t| t.parse::<u128>().ok())
+        .and_then(|t0| {
+            let now_ns = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .ok()?
+                .as_nanos();
+            Some((now_ns.saturating_sub(t0)) as f64 / 1e6)
+        });
+    match from_shell {
+        Some(ms) => st.emit(Some(ms), &format!("{label} (from the shell's exec)")),
+        None => st.emit(None, label),
+    }
+}
+
+struct StartupLogger;
 
 impl log::Log for StartupLogger {
     fn enabled(&self, _: &log::Metadata) -> bool {
-        true
+        startup().level >= 2
     }
     fn log(&self, record: &log::Record) {
-        let now = Instant::now();
-        let mut last = self.last.lock().unwrap_or_else(|e| e.into_inner());
-        let since = last
-            .map(|l| (now - l).as_secs_f64() * 1000.0)
-            .unwrap_or(0.0);
-        *last = Some(now);
-        eprintln!(
-            "startup  +{since:7.2} ms    [{}] {}",
-            record.target(),
-            record.args()
+        let st = startup();
+        if st.level < 2 {
+            return;
+        }
+        let since = st.since_last().unwrap_or(0.0);
+        if st.level == 2 && since < 0.25 {
+            return;
+        }
+        st.emit(
+            Some(since),
+            &format!("  [{}] {}", record.target(), record.args()),
         );
     }
     fn flush(&self) {}
 }
 
-static STARTUP_LOGGER: StartupLogger = StartupLogger {
-    last: std::sync::Mutex::new(None),
-};
+static STARTUP_LOGGER: StartupLogger = StartupLogger;
 
 fn main() {
     startup_mark("main entered: exec, dynamic loader, static init");
-    if std::env::var_os("OXTREE_STARTUP").is_some() {
+    if startup().level >= 2 {
         let _ = log::set_logger(&STARTUP_LOGGER);
         log::set_max_level(log::LevelFilter::Trace);
     }
@@ -135,6 +175,12 @@ fn main() {
     }
     let started = Instant::now();
     startup_mark("arguments parsed");
+    let early = oxtree_ui::app::begin_early(if args.cache.is_none() {
+        args.path.clone()
+    } else {
+        None
+    });
+    startup_mark("scan started on its threads, config and date +%z on another");
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(if oxtree_native::root::is_root() {
@@ -150,12 +196,13 @@ fn main() {
     let result = eframe::run_native(
         "OxTree",
         options,
-        Box::new(move |_cc| {
+        Box::new(move |cc| {
             startup_mark("window, GL context and egui ready (winit, Wayland, glutin, Mesa)");
             Ok(Box::new(Shell {
                 app: {
-                    let mut app = OxTreeApp::new(args.path, args.cache, args.screenshot);
-                    startup_mark("OxTreeApp::new: config, date +%z, categories, scan thread start");
+                    let mut app = OxTreeApp::new(early, args.cache, args.screenshot);
+                    app.attach_context(&cc.egui_ctx);
+                    startup_mark("OxTreeApp::new: joined the config thread, categories");
                     if args.files_view {
                         app.view = oxtree_ui::app::View::Files;
                     }
@@ -168,6 +215,7 @@ fn main() {
                 started,
                 first_frame: true,
                 frames: 0,
+                tree_seen: false,
             }))
         }),
     );
@@ -182,6 +230,7 @@ struct Shell {
     started: Instant,
     first_frame: bool,
     frames: u32,
+    tree_seen: bool,
 }
 
 impl eframe::App for Shell {
@@ -208,6 +257,13 @@ impl eframe::App for Shell {
         }
         let app = &mut self.app;
         app.pump(&ctx);
+        if !self.tree_seen && app.tree.is_some() {
+            self.tree_seen = true;
+            startup_mark(&format!(
+                "tree installed: the scan itself took {:.0} ms; the first frame with content follows",
+                app.last_elapsed.map(|e| e.as_secs_f64() * 1000.0).unwrap_or(0.0)
+            ));
+        }
         oxtree_ui::menus::handle_shortcuts(app, &ctx);
         match app.view {
             oxtree_ui::app::View::Tree => oxtree_ui::tree_view::handle_keys(app, &ctx),
