@@ -61,3 +61,5 @@ The workspace forbids `unsafe` and denies `unwrap`, `expect`, `panic` and indexi
 ## Credits and licence
 
 GPL-2.0, see [LICENSE](LICENSE). The treemap algorithm and its constants, the category table, the standard cleanups and the cache file format come from [QDirStat](https://github.com/shundhammer/qdirstat) by Stefan Hundhammer; see [NOTICE](NOTICE). QDirStat in turn builds on the squarified and cushion treemap papers by Bruls, Huizing, van Wijk and van de Wetering.
+
+How far this is from WizTree, feature by feature, is tracked in [docs/wiztree-parity.md](docs/wiztree-parity.md).
