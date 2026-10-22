@@ -62,7 +62,11 @@ fn main() {
     let started = Instant::now();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("OxTree")
+            .with_title(if oxtree_native::root::is_root() {
+                "OxTree [root]"
+            } else {
+                "OxTree"
+            })
             .with_app_id("oxtree")
             .with_inner_size([1200.0, 800.0])
             .with_min_inner_size([640.0, 400.0]),

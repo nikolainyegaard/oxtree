@@ -31,6 +31,10 @@ Dated notes on things that look wrong until you know why, and on dead ends. Add 
 
 - **eframe's `clipboard` feature is on by name.** The dependency disables default features to keep wgpu and accesskit out, and the first cut forgot clipboard along with them. Copy Path still worked because `Context::copy_text` goes out through the same crates only for writing; reading the clipboard for Ctrl+V needs the feature. Any future trimming of the eframe feature list must keep it.
 
+## 2026-10-22, root
+
+- **Rescan as Root is a second process.** Linux cannot raise a running process's privileges, so File, Rescan as Root runs `pkexec env WAYLAND_DISPLAY=... DISPLAY=... OXTREE_CONFIG_DIR=... oxtree PATH`. pkexec clears the environment, so the display variables are passed explicitly, and `WAYLAND_DISPLAY` is made absolute because root's `XDG_RUNTIME_DIR` is not the user's. The root instance reads the user's config through `OXTREE_CONFIG_DIR` and `save_cleanups` refuses to write as root, so no file ends up owned by root (QDirStat fixes ownership after the fact instead). The polkit dialog shows a generic message unless `packaging/com.github.nikolainyegaard.oxtree.policy` is installed and the binary is at `/usr/bin/oxtree`, which is what the action file's `exec.path` names. Tested by the user on KDE Wayland; untested on GNOME and X11.
+
 ## Pinned, ports
 
 - **Windows needs the MFT reader or nothing.** Decided 2026-10-22: a Windows build without reading the NTFS Master File Table would be slower than WizTree by an order of magnitude and is not worth shipping. The reader is its own project; see the Ports section of `docs/wiztree-parity.md`. macOS is a native-crate branch and could go first.

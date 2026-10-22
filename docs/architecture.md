@@ -49,6 +49,8 @@ crates/native/src/
   config.rs                XDG config dir, cleanups file, QDirStat fallback
   cache_io.rs              cache files on disk, gzip through the system binary
   localtime.rs             date +%z once
+  mounts.rs                /proc/self/mounts, df, which filesystems a scan may cross into
+  root.rs                  effective uid, second instance as root through pkexec
 crates/ui/src/
   lib.rs
   app.rs                   OxTreeApp state, pump(), actions, row flattening, treemap jobs
@@ -90,6 +92,6 @@ Two direct dependencies outside std:
 | regex-lite 0.1 | The `/regex` mode of the search box. About 150 KB with no dependencies and no Unicode classes, which file names do not need; the full `regex` crate was rejected at about 500 KB plus its tree. |
 | eframe 0.37 (glow, wayland, x11, default fonts, clipboard) | The window and the immediate-mode UI. glow is the lighter renderer; wgpu adds a shader compiler and more memory for nothing a treemap needs. The clipboard feature pulls in arboard and smithay-clipboard so Ctrl+V reads the system clipboard; without it egui only pastes what it copied itself. 0.37 paces Wayland frames by compositor callbacks instead of a blocking swap, so the app keeps running when the compositor withholds frames. |
 
-Everything else is a child process: `df` for the sizes in the Open Directory list, `gzip` for compressed cache files, `gio trash`, `kdialog` or `zenity` for the directory chooser, `date +%z` for the time zone, the user's shell for cleanups.
+Everything else is a child process: `pkexec` for Rescan as Root, `df` for the sizes in the Open Directory list, `gzip` for compressed cache files, `gio trash`, `kdialog` or `zenity` for the directory chooser, `date +%z` for the time zone, the user's shell for cleanups.
 
 The opt-in update check, when it comes, will use `curl` as a child process rather than an HTTP crate.

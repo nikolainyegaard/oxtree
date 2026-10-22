@@ -60,6 +60,7 @@ Status bar states, taken from QDirStat where it had them:
 | Finished | `Finished. Elapsed time: 0.125 sec` plus `[N directories could not be read]` when applicable |
 | Aborted | `Reading aborted.` |
 | Selection | `/usr/lib64  6.1 GB` |
+| Root | `[N directories could not be read]  File, Rescan as Root reads them.` after a scan; `Waiting for authorization...` while the polkit dialog is up; `The root instance closed.`, `Authorization dismissed.` or `Not authorized to run OxTree as root.` after; the root window's title is `OxTree [root]` |
 | Cleanup | `Running Delete Junk Files...`, then `Cleanup action finished successfully.` or `Cleanup action finished with N errors.` |
 | Trash | `Moved to trash: /path` or `Move to trash failed: reason` |
 | Clipboard | `Copied to clipboard: /path` |

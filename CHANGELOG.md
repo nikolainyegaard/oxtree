@@ -8,6 +8,7 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- File, Rescan as Root: a second OxTree window as root through polkit on the same directory, for the directories the user cannot read; the title shows [root], configuration is read from the user and never written; a polkit action file in `packaging/`
 - A scan crosses into other local filesystems by default; kernel tables and network mounts stay out. The Open Directory dialog has the checkbox, lists every mounted local filesystem with size, used and free, and scans one with a click. Entered mount points keep a disk badge on their folder icon and the details panel names the filesystem
 - Directories opened by a treemap click or a File View jump close again on the next such click, unless opened by hand or worked in since; the tree no longer accumulates every revealed path
 - Tree icons per kind: folder, file, symlink, mount point, unreadable folder and the `<Files>` entry, painted rather than shipped as images; directories with an unreadable directory below them are shown in yellow as in QDirStat

@@ -8,6 +8,11 @@ use oxtree_core::cleanup::{self, Cleanup};
 use oxtree_core::ini::Ini;
 
 pub fn config_dir() -> PathBuf {
+    // A root instance started from the app gets the invoking user's
+    // directory this way and reads it; see `root.rs`.
+    if let Some(dir) = std::env::var_os("OXTREE_CONFIG_DIR") {
+        return PathBuf::from(dir);
+    }
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
@@ -70,6 +75,10 @@ pub fn save_cleanups(cleanups: &[Cleanup]) -> Result<(), String> {
 }
 
 fn save_cleanups_to(path: &Path, cleanups: &[Cleanup]) -> Result<(), String> {
+    if crate::root::is_root() {
+        // Written as root, the file would be the user's no longer.
+        return Ok(());
+    }
     let dir = path.parent().unwrap_or(Path::new("."));
     std::fs::create_dir_all(dir).map_err(|e| format!("Cannot create {}: {e}", dir.display()))?;
     set_private(dir);

@@ -7,6 +7,7 @@ pub mod config;
 pub mod dialog;
 pub mod localtime;
 pub mod mounts;
+pub mod root;
 pub mod run;
 pub mod trash;
 pub mod walker;

@@ -223,6 +223,19 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
                 ui.close();
             }
             if ui
+                .add_enabled(
+                    app.scan_path.is_some() && !app.is_root && app.root_launch.is_none(),
+                    egui::Button::new("Rescan as Root..."),
+                )
+                .on_hover_text(
+                    "Opens a second OxTree window as root on the same directory, through polkit",
+                )
+                .clicked()
+            {
+                app.rescan_as_root();
+                ui.close();
+            }
+            if ui
                 .add_enabled(app.scan.is_some(), egui::Button::new("Stop Reading"))
                 .clicked()
             {

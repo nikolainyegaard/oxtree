@@ -8,8 +8,8 @@ The authoritative answer to "how close is OxTree to WizTree, and what is left". 
 
 | Number | Value | How |
 |---|---|---|
-| **Feature breadth** (does each WizTree feature exist?) | **48%** | Done rows plus half of Partial rows, over the 96 rows that apply on Linux; counted from the tables below |
-| **Rows** | 37 done, 19 partial, 40 missing, 6 not applicable, 3 declined | counted over the status column of the tables below |
+| **Feature breadth** (does each WizTree feature exist?) | **49%** | Done rows plus half of Partial rows, over the 96 rows that apply on Linux; counted from the tables below |
+| **Rows** | 38 done, 19 partial, 39 missing, 6 not applicable, 3 declined | counted over the status column of the tables below |
 | **Stage** | **alpha** | Scan, tree, treemap, cleanups and trash work end to end; everything WizTree calls the File View does not exist yet |
 
 The number is honest about breadth only. Where OxTree has a feature it is usually complete, because the views were built from QDirStat, which is deeper than WizTree in those areas. Where it is missing, it is missing entirely: there is no flat file list, no search, no file type view and no export.
@@ -180,7 +180,7 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 | High DPI scaling | Done | egui scales with the compositor | |
 | Tweaks: drag and drop, double click action, rendering | Missing | | Settings, once there is a settings file |
 | Portable mode, config next to the executable | Missing | | `--config DIR` covers the use |
-| Run as administrator | Missing | | A Rescan as Root action running `pkexec oxtree PATH`; QDirStat's approach is a separate process too |
+| Run as administrator | Done | File, Rescan as Root opens a second window as root through polkit on the same path; the title shows [root], the root instance reads the user's configuration and never writes it; the status bar suggests it when directories could not be read | A polkit action file is in `packaging/` for installs that put the binary in /usr/bin |
 | Check for updates | Missing | No network access from the app today | Opt-in only: a Check for Updates button, a Check Automatically toggle that is off by default, and a frequency (daily, weekly, monthly). Never a request unless the toggle is on. One GET of the GitHub releases API through `curl` as a child process, compare the tag with the version, show a status line and a link; no download, no install. Pinned in gotchas.md for the settings work |
 | Reset configuration | Missing | | Delete the settings file and reload defaults; part of the Preferences dialog |
 | Translations | Missing | | English only; strings are literals in the views |
