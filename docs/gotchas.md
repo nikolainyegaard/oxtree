@@ -29,6 +29,8 @@ Dated notes on things that look wrong until you know why, and on dead ends. Add 
 - **The File View list is built on a worker thread** (`request_file_view`, `pump_file_view` in `app.rs`). The first version built it on the UI thread per keystroke, which froze the text field for the length of the build, up to a second on a home directory in path mode. Now the old rows stay until the new ones land, results carry a generation and stale ones are dropped, and keystrokes during a build coalesce into one more build. The search box itself is never blocked.
 - **Substring terms compare in place.** `contains_ignore_case` scans ASCII names with `eq_ignore_ascii_case` and only lowercases non-ASCII names, which are rare; the per-node `to_lowercase()` it replaced was most of the name-mode cost.
 
+- **eframe's `clipboard` feature is on by name.** The dependency disables default features to keep wgpu and accesskit out, and the first cut forgot clipboard along with them. Copy Path still worked because `Context::copy_text` goes out through the same crates only for writing; reading the clipboard for Ctrl+V needs the feature. Any future trimming of the eframe feature list must keep it.
+
 ## Pinned for the settings work
 
 - **Cross filesystems as a preference.** `OxTreeApp::cross_filesystems`, read from `OXTREE_CROSS_FILESYSTEMS`, default off. Proposed key: `[DirectoryTree] CrossFilesystems`, QDirStat's name, default false. The Open Directory dialog should also get the checkbox QDirStat has there. The mount classification does not become a setting.
