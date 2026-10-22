@@ -86,3 +86,5 @@ One direct dependency outside std:
 | eframe 0.36 (glow, wayland, x11, default fonts) | The window and the immediate-mode UI. glow is the lighter renderer; wgpu adds a shader compiler and more memory for nothing a treemap needs. |
 
 Everything else is a child process: `gzip` for compressed cache files, `gio trash`, `kdialog` or `zenity` for the directory chooser, `date +%z` for the time zone, the user's shell for cleanups.
+
+Planned, with its justification settled in advance: `regex-lite` for the search box's regex mode, about 150 KB with no dependencies and no Unicode classes, which file names do not need; the full `regex` crate was rejected at about 500 KB plus its tree. The opt-in update check will use `curl` as a child process rather than an HTTP crate.

@@ -8,8 +8,8 @@ The authoritative answer to "how close is OxTree to WizTree, and what is left". 
 
 | Number | Value | How |
 |---|---|---|
-| **Feature breadth** (does each WizTree feature exist?) | **37%** | Done rows plus half of Partial rows, over the 93 rows that apply on Linux; counted from the tables below |
-| **Rows** | 25 done, 19 partial, 49 missing, 6 not applicable, 5 declined | counted over the status column of the tables below |
+| **Feature breadth** (does each WizTree feature exist?) | **36%** | Done rows plus half of Partial rows, over the 96 rows that apply on Linux; counted from the tables below |
+| **Rows** | 25 done, 19 partial, 52 missing, 6 not applicable, 3 declined | counted over the status column of the tables below |
 | **Stage** | **alpha** | Scan, tree, treemap, cleanups and trash work end to end; everything WizTree calls the File View does not exist yet |
 
 The number is honest about breadth only. Where OxTree has a feature it is usually complete, because the views were built from QDirStat, which is deeper than WizTree in those areas. Where it is missing, it is missing entirely: there is no flat file list, no search, no file type view and no export.
@@ -106,7 +106,7 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 | Multiple terms: space is AND, `\|` is OR, quotes group | Missing | | A small query parser in core with a test |
 | Size, allocated, date, time, name length and path length operators | Missing | | Same parser; dates need a parser for yyyy/mm/dd, today and now |
 | `=folder` and `=file` filters | Missing | | Same parser |
-| Regular expression search | Declined | | A regex crate is 500 KB of code for a feature the globs and operators cover; revisit if asked |
+| Regular expression search (`/` prefix) | Missing | | `regex-lite` (about 150 KB, no dependencies, no Unicode classes, enough for file names) behind the same prefix; the full `regex` crate was rejected for size. Part of the search work |
 | Match File Name Only or Match Entire Path | Missing | | A radio pair on the search box |
 | Search history dropdown | Missing | | Last ten queries in the settings file |
 | Include and exclude filters (Ctrl+Shift+F), applied to scan results or during the scan | Partial | Exclude by directory name during the scan | The query parser applied to the arena, producing a filtered index for the views |
@@ -181,7 +181,8 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 | Tweaks: drag and drop, double click action, rendering | Missing | | Settings, once there is a settings file |
 | Portable mode, config next to the executable | Missing | | `--config DIR` covers the use |
 | Run as administrator | Missing | | A Rescan as Root action running `pkexec oxtree PATH`; QDirStat's approach is a separate process too |
-| Check for updates, reset configuration | Declined | No network access from the app | Package managers update it |
+| Check for updates | Missing | No network access from the app today | Opt-in only: a Check for Updates button, a Check Automatically toggle that is off by default, and a frequency (daily, weekly, monthly). Never a request unless the toggle is on. One GET of the GitHub releases API through `curl` as a child process, compare the tag with the version, show a status line and a link; no download, no install. Pinned in gotchas.md for the settings work |
+| Reset configuration | Missing | | Delete the settings file and reload defaults; part of the Preferences dialog |
 | Translations | Missing | | English only; strings are literals in the views |
 | Supporter code, enterprise licence | N/A | GPL | |
 
@@ -200,7 +201,7 @@ Ordered by how much of WizTree's daily use each one unlocks, divided by what it 
 5. **Multi-selection.** Both views, trash and cleanups over the set, totals in the status bar. Also what "select all of this extension" and duplicates cleanup need.
 6. **Duplicates.** Grouping over the arena, two columns, a filter.
 7. **Names on treemap tiles, free space in tree and treemap, hard link dedup.** Three small items that make the pictures match WizTree.
-8. **Settings file and Preferences dialog.** Unblocks the pinned items (cross filesystems, rebuild delay), decimal places, row height, theme, expand level, column choice.
+8. **Settings file and Preferences dialog.** Unblocks the pinned items (cross filesystems, rebuild delay, opt-in update check), decimal places, row height, theme, expand level, column choice, reset to defaults.
 9. **Rename, open on double click, Expand All, expand to level, font size.** Small items taken as they come.
 
 Items 1 to 4 make OxTree usable the way WizTree is used. Items 5 to 9 are parity. Review this document when one of them lands: update the row, the counts and the headline.
