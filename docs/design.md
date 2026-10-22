@@ -67,6 +67,8 @@ Details panel labels: Total Size, Items, Files, Subdirs, Size, Allocated, Last M
 
 | Action | How |
 |--------|-----|
+| Switch view | Tree View and File View tabs above the list, Ctrl+1 and Ctrl+2 |
+| File View | Flat list, largest first; Show cap and Folders toggle in the tab strip; click selects, double click or Enter jumps to the item in the tree |
 | Select | Click a row or a tile |
 | Context menu | Right-click a row or a tile: copy path, trash, cleanups, treemap zoom, up one level |
 | Expand or collapse | Click the arrow, double click the row, Right and Left arrow keys, Enter |

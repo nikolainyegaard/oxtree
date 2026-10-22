@@ -118,7 +118,7 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
             Pos2::new(x, header_rect.top()),
             Vec2::new(w, theme::ROW_HEIGHT),
         );
-        let resp = ui.interact(rect, ui.id().with(("hdr", label)), Sense::click());
+        let resp = ui.interact(rect, ui.scope_id().with(("hdr", label)), Sense::click());
         let text = label.to_string();
         let sorted_here = app.sort.column == col;
         let anchor = if align == Align2::LEFT_CENTER {
@@ -189,7 +189,7 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
                 ui.allocate_exact_size(Vec2::new(width, theme::ROW_HEIGHT), Sense::hover());
             let resp = ui.interact(
                 rect,
-                egui::Id::new(("oxtree-row", row.node)),
+                egui::Id::unique(("oxtree-row", row.node)),
                 Sense::click(),
             );
             let cols = columns(rect.left() + 4.0, rect.width() - 8.0);
@@ -411,6 +411,17 @@ fn triangle(painter: &egui::Painter, center: Pos2, r: f32, dir: Dir, color: Colo
         ],
     };
     painter.add(egui::Shape::convex_polygon(points, color, Stroke::NONE));
+}
+
+/// The sort direction marker on a column header, shared with the file view.
+pub fn sort_marker(painter: &egui::Painter, center: Pos2, ascending: bool, color: Color32) {
+    triangle(
+        painter,
+        center,
+        4.0,
+        if ascending { Dir::Up } else { Dir::Down },
+        color,
+    );
 }
 
 /// Arrow keys, Enter and Backspace move the selection when no text field

@@ -4,6 +4,7 @@
 pub mod app;
 pub mod details_view;
 pub mod dialogs;
+pub mod file_view;
 pub mod menus;
 pub mod status_bar;
 pub mod theme;

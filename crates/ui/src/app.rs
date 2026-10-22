@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use eframe::egui::{self, Context, TextureHandle};
 use oxtree_core::cleanup::{Cleanup, OutputPolicy, Refresh};
 use oxtree_core::cushion::Shading;
+use oxtree_core::flat::{flat_list, FlatSort};
 use oxtree_core::layout::Tile;
 use oxtree_core::mime::Categorizer;
 use oxtree_core::{format, Kind, NodeId, Tree};
@@ -35,6 +36,39 @@ pub enum Column {
 pub struct Sort {
     pub column: Column,
     pub ascending: bool,
+}
+
+/// Which view the central panel shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum View {
+    Tree,
+    Files,
+}
+
+/// The File View's list and its controls.
+pub struct FileViewState {
+    pub rows: Vec<NodeId>,
+    pub dirty: bool,
+    pub sort: FlatSort,
+    pub ascending: bool,
+    /// Largest N to show; 0 is all.
+    pub max: usize,
+    pub include_dirs: bool,
+    pub scroll_to_selected: bool,
+}
+
+impl Default for FileViewState {
+    fn default() -> Self {
+        FileViewState {
+            rows: Vec::new(),
+            dirty: true,
+            sort: FlatSort::Size,
+            ascending: false,
+            max: 1_000,
+            include_dirs: false,
+            scroll_to_selected: false,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -113,6 +147,8 @@ pub struct OxTreeApp {
     /// Set by a refresh; applied when the new tree lands.
     pub view_memory: Option<ViewMemory>,
     pub sort: Sort,
+    pub view: View,
+    pub file_view: FileViewState,
 
     pub treemap_root: NodeId,
     pub treemap: TreemapState,
@@ -190,6 +226,8 @@ impl OxTreeApp {
             rows_dirty: true,
             scroll_to_selected: false,
             view_memory: None,
+            view: View::Tree,
+            file_view: FileViewState::default(),
             sort: Sort {
                 column: Column::Size,
                 ascending: false,
@@ -379,6 +417,7 @@ impl OxTreeApp {
         }
         self.tree = Some(Arc::new(tree));
         self.rows_dirty = true;
+        self.file_view.dirty = true;
         self.last_elapsed = elapsed;
         self.unreadable = unreadable;
         match elapsed {
@@ -679,6 +718,29 @@ impl OxTreeApp {
             };
         }
         self.rows_dirty = true;
+    }
+
+    // ------------------------------------------------------------ file view
+
+    pub fn rebuild_file_view(&mut self) {
+        self.file_view.dirty = false;
+        self.file_view.rows.clear();
+        let Some(tree) = self.tree.clone() else {
+            return;
+        };
+        let fv = &mut self.file_view;
+        fv.rows = flat_list(&tree, fv.include_dirs, fv.sort, fv.ascending, fv.max);
+    }
+
+    pub fn set_file_sort(&mut self, sort: FlatSort) {
+        let fv = &mut self.file_view;
+        if fv.sort == sort {
+            fv.ascending = !fv.ascending;
+        } else {
+            fv.sort = sort;
+            fv.ascending = matches!(sort, FlatSort::Name);
+        }
+        fv.dirty = true;
     }
 
     pub fn row_index_of(&self, node: NodeId) -> Option<usize> {

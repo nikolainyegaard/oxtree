@@ -3,7 +3,7 @@
 
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, Ui};
 
-use crate::app::OxTreeApp;
+use crate::app::{OxTreeApp, View};
 
 const OPEN: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::O);
 const REFRESH: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F5);
@@ -16,6 +16,8 @@ const ZOOM_OUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::M
 const ZOOM_RESET: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Num0);
 const GO_UP: KeyboardShortcut = KeyboardShortcut::new(Modifiers::ALT, Key::ArrowUp);
 const CLOSE_ALL: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::W);
+const VIEW_TREE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Num1);
+const VIEW_FILES: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Num2);
 
 pub fn handle_shortcuts(app: &mut OxTreeApp, ctx: &egui::Context) {
     if ctx.memory(|m| m.focused().is_some()) {
@@ -54,6 +56,12 @@ pub fn handle_shortcuts(app: &mut OxTreeApp, ctx: &egui::Context) {
     }
     if pressed(&CLOSE_ALL) {
         app.close_all_levels();
+    }
+    if pressed(&VIEW_TREE) {
+        app.view = View::Tree;
+    }
+    if pressed(&VIEW_FILES) {
+        app.view = View::Files;
     }
     let hotkeys: Vec<(usize, String)> = app
         .cleanups
@@ -263,6 +271,21 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
             }
         });
         ui.menu_button("View", |ui| {
+            if ui
+                .add(egui::Button::new("Tree View").shortcut_text(ctx.format_shortcut(&VIEW_TREE)))
+                .clicked()
+            {
+                app.view = View::Tree;
+                ui.close();
+            }
+            if ui
+                .add(egui::Button::new("File View").shortcut_text(ctx.format_shortcut(&VIEW_FILES)))
+                .clicked()
+            {
+                app.view = View::Files;
+                ui.close();
+            }
+            ui.separator();
             if ui
                 .add(
                     egui::Button::new(if app.show_treemap {

@@ -5,6 +5,7 @@
 pub mod cache;
 pub mod cleanup;
 pub mod cushion;
+pub mod flat;
 pub mod format;
 pub mod glob;
 pub mod ini;

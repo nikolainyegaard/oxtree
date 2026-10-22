@@ -38,6 +38,7 @@ Without arguments a dialog asks for the directory. The Browse button uses `kdial
 | Ctrl+wheel over the treemap | Zoom |
 | Double click a tile | Zoom into its directory |
 | Right click a row or a tile | Menu with copy path, trash, cleanups and treemap zoom |
+| Ctrl+1, Ctrl+2 | Tree View, File View (all files, largest first, with a Show cap) |
 | F9 | Show or hide the treemap |
 | Ctrl+C | Copy the path |
 | Delete | Move to trash |

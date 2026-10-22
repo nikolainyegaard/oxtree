@@ -6,6 +6,26 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- File View: every file in one flat list, largest first, with a Show cap of 1 000, 10 000, 100 000 or All and a Folders toggle; Ctrl+1 and Ctrl+2 switch views, double click or Enter jumps to the item in the tree; `--files` starts in it
+- Right-click menu on tree rows and treemap tiles
+- Rescans keep the view in place: old tree stays until the new one lands, selection, expanded folders and zoom carry over
+- Cross-filesystem scanning behind `OXTREE_CROSS_FILESYSTEMS=1`, with kernel and network mounts kept as leaves
+
+### Changed
+
+- eframe 0.37: on Wayland, frames are paced by the compositor's frame callbacks instead of a blocking swap, and the app keeps running while the compositor withholds frames (locked screen, covered window)
+
+### Fixed
+
+- Ctrl+wheel zoom over the treemap
+- A running cleanup no longer blocks the others
+- An existing but empty cleanups file is left alone
+- Rebuild Treemap works
+- ShowNever cleanups never open the output window
+- Tree expand markers and the sort indicator rendered as boxes
+
 ## [0.1.0] - 2026-10-21
 
 ### Added

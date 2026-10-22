@@ -22,7 +22,7 @@ fn open_directory(app: &mut OxTreeApp, ctx: &Context) {
     let mut close = false;
     let mut open = None;
     let mut browse = false;
-    egui::Modal::new(Id::new("open-dir")).show(ctx, |ui| {
+    egui::Modal::new(Id::unique("open-dir")).show(ctx, |ui| {
         ui.set_width(520.0);
         ui.heading("Open Directory");
         ui.label("Directory to scan:");
@@ -79,7 +79,7 @@ fn cache_file(app: &mut OxTreeApp, ctx: &Context) {
         return;
     };
     let mut done = None;
-    egui::Modal::new(Id::new("cache-file")).show(ctx, |ui| {
+    egui::Modal::new(Id::unique("cache-file")).show(ctx, |ui| {
         ui.set_width(520.0);
         ui.heading(if write {
             "Write Cache File"
@@ -128,7 +128,7 @@ fn confirm(app: &mut OxTreeApp, ctx: &Context) {
         return;
     };
     let mut answer = None;
-    egui::Modal::new(Id::new("confirm")).show(ctx, |ui| {
+    egui::Modal::new(Id::unique("confirm")).show(ctx, |ui| {
         ui.set_width(520.0);
         ui.heading("Please Confirm");
         ui.add_space(4.0);
@@ -178,7 +178,7 @@ fn error(app: &mut OxTreeApp, ctx: &Context) {
         return;
     };
     let mut close = false;
-    egui::Modal::new(Id::new("error")).show(ctx, |ui| {
+    egui::Modal::new(Id::unique("error")).show(ctx, |ui| {
         ui.set_width(480.0);
         ui.heading("Error");
         ui.label(text);
@@ -201,7 +201,7 @@ fn about(app: &mut OxTreeApp, ctx: &Context) {
         return;
     }
     let mut close = false;
-    egui::Modal::new(Id::new("about")).show(ctx, |ui| {
+    egui::Modal::new(Id::unique("about")).show(ctx, |ui| {
         ui.set_width(440.0);
         ui.heading(format!("OxTree {}", env!("CARGO_PKG_VERSION")));
         ui.label("Directory statistics: where the disk space went, as a tree and a treemap.");

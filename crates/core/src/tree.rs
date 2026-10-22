@@ -518,7 +518,7 @@ fn sort_desc<'a>(entries: &mut [(u64, Entry)], name: impl Fn(&Entry) -> &'a str)
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn file(name: &str, size: u64) -> FileRecord {

@@ -15,6 +15,7 @@ struct Args {
     cache: Option<PathBuf>,
     bench: bool,
     screenshot: Option<PathBuf>,
+    files_view: bool,
     help: bool,
 }
 
@@ -24,6 +25,7 @@ fn parse_args() -> Args {
         cache: None,
         bench: false,
         screenshot: None,
+        files_view: false,
         help: false,
     };
     let mut it = std::env::args().skip(1);
@@ -32,6 +34,7 @@ fn parse_args() -> Args {
             "--bench" => args.bench = true,
             "--cache" => args.cache = it.next().map(PathBuf::from),
             "--screenshot" => args.screenshot = it.next().map(PathBuf::from),
+            "--files" => args.files_view = true,
             "-h" | "--help" => args.help = true,
             _ if a.starts_with("--") => args.help = true,
             _ => args.path = Some(PathBuf::from(a)),
@@ -44,7 +47,7 @@ fn main() {
     let args = parse_args();
     if args.help {
         out(
-            "usage: oxtree [DIRECTORY] [--cache FILE] [--bench] [--screenshot FILE.ppm]"
+            "usage: oxtree [DIRECTORY] [--cache FILE] [--files] [--bench] [--screenshot FILE.ppm]"
                 .to_string(),
         );
         return;
@@ -67,7 +70,13 @@ fn main() {
         options,
         Box::new(move |_cc| {
             Ok(Box::new(Shell {
-                app: OxTreeApp::new(args.path, args.cache, args.screenshot),
+                app: {
+                    let mut app = OxTreeApp::new(args.path, args.cache, args.screenshot);
+                    if args.files_view {
+                        app.view = oxtree_ui::app::View::Files;
+                    }
+                    app
+                },
                 started,
                 first_frame: true,
             }))
@@ -98,7 +107,10 @@ impl eframe::App for Shell {
         let app = &mut self.app;
         app.pump(&ctx);
         oxtree_ui::menus::handle_shortcuts(app, &ctx);
-        oxtree_ui::tree_view::handle_keys(app, &ctx);
+        match app.view {
+            oxtree_ui::app::View::Tree => oxtree_ui::tree_view::handle_keys(app, &ctx),
+            oxtree_ui::app::View::Files => oxtree_ui::file_view::handle_keys(app, &ctx),
+        }
 
         egui::Panel::top("menu").show(root, |ui| oxtree_ui::menus::show(app, ui));
         egui::Panel::bottom("status").show(root, |ui| oxtree_ui::status_bar::show(app, ui));
@@ -121,7 +133,13 @@ impl eframe::App for Shell {
         }
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.inner_margin(2.0))
-            .show(root, |ui| oxtree_ui::tree_view::show(app, ui));
+            .show(root, |ui| {
+                oxtree_ui::file_view::tabs(app, ui);
+                match app.view {
+                    oxtree_ui::app::View::Tree => oxtree_ui::tree_view::show(app, ui),
+                    oxtree_ui::app::View::Files => oxtree_ui::file_view::show(app, ui),
+                }
+            });
 
         oxtree_ui::dialogs::show(app, &ctx);
         screenshot_step(app, &ctx);
@@ -135,41 +153,36 @@ fn screenshot_step(app: &mut OxTreeApp, ctx: &egui::Context) {
         return;
     };
     let ready = app.tree.is_some() && app.treemap.texture.is_some() && app.treemap.job.is_none();
-    if ready {
-        if countdown > 0 {
-            app.screenshot = Some((path, countdown - 1));
-            ctx.request_repaint();
-            return;
-        }
-        if !app.quit_after_screenshot {
-            app.quit_after_screenshot = true;
-            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
-        }
-        // The captured frame arrives as an input event on a later frame, so
-        // keep frames coming until it does.
-        ctx.request_repaint_after(std::time::Duration::from_millis(50));
-    } else {
+    if !ready {
         ctx.request_repaint_after(std::time::Duration::from_millis(50));
         return;
     }
-    let image = ctx.input(|i| {
-        i.events.iter().find_map(|e| match e {
-            egui::Event::Screenshot { image, .. } => Some(image.clone()),
-            _ => None,
-        })
-    });
-    if let Some(img) = image {
-        let [w, h] = img.size;
-        let mut ppm = format!("P6\n{w} {h}\n255\n").into_bytes();
-        for px in &img.pixels {
-            ppm.extend_from_slice(&[px.r(), px.g(), px.b()]);
-        }
-        match std::fs::write(&path, ppm) {
-            Ok(()) => eprintln!("screenshot written to {}", path.display()),
-            Err(e) => eprintln!("screenshot failed: {e}"),
-        }
-        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+    if countdown > 0 {
+        app.screenshot = Some((path, countdown - 1));
+        ctx.request_repaint();
+        return;
     }
+    if app.quit_after_screenshot {
+        return;
+    }
+    app.quit_after_screenshot = true;
+    // The capture runs after this frame is painted; the callback writes the
+    // file and closes the window.
+    let ctx2 = ctx.clone();
+    ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(
+        egui::ScreenshotCallback::new(move |img| {
+            let [w, h] = img.size;
+            let mut ppm = format!("P6\n{w} {h}\n255\n").into_bytes();
+            for px in &img.pixels {
+                ppm.extend_from_slice(&[px.r(), px.g(), px.b()]);
+            }
+            match std::fs::write(&path, ppm) {
+                Ok(()) => eprintln!("screenshot written to {}", path.display()),
+                Err(e) => eprintln!("screenshot failed: {e}"),
+            }
+            ctx2.send_viewport_cmd(egui::ViewportCommand::Close);
+        }),
+    ));
 }
 
 /// Print without panicking when stdout is a closed pipe.

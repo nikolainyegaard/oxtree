@@ -1,6 +1,6 @@
 # OxTree vs WizTree: target-app parity
 
-> **Last reviewed:** 2026-10-22 · **Last updated:** 2026-10-22 · **Change:** first version, inventory taken from WizTree's guide, feature page and version history · **Target:** WizTree 4.33 for Windows (16 September 2026), with WizTreeMac 1.00 as the reference for what WizTree does without an MFT
+> **Last reviewed:** 2026-10-22 · **Last updated:** 2026-10-22 · **Change:** File View landed (flat list, top-N cap, folders toggle, Ctrl+1 and Ctrl+2); earlier the same day: first version, inventory taken from WizTree's guide, feature page and version history · **Target:** WizTree 4.33 for Windows (16 September 2026), with WizTreeMac 1.00 as the reference for what WizTree does without an MFT
 
 The authoritative answer to "how close is OxTree to WizTree, and what is left". Each row is a WizTree feature, what OxTree has for it today, and what closing the gap touches. The ranked list of what to build next is at the end. QDirStat is the reference for behaviour and defaults where WizTree has nothing to say; it is not the target.
 
@@ -8,8 +8,8 @@ The authoritative answer to "how close is OxTree to WizTree, and what is left". 
 
 | Number | Value | How |
 |---|---|---|
-| **Feature breadth** (does each WizTree feature exist?) | **36%** | Done rows plus half of Partial rows, over the 96 rows that apply on Linux; counted from the tables below |
-| **Rows** | 25 done, 19 partial, 52 missing, 6 not applicable, 3 declined | counted over the status column of the tables below |
+| **Feature breadth** (does each WizTree feature exist?) | **39%** | Done rows plus half of Partial rows, over the 96 rows that apply on Linux; counted from the tables below |
+| **Rows** | 28 done, 19 partial, 49 missing, 6 not applicable, 3 declined | counted over the status column of the tables below |
 | **Stage** | **alpha** | Scan, tree, treemap, cleanups and trash work end to end; everything WizTree calls the File View does not exist yet |
 
 The number is honest about breadth only. Where OxTree has a feature it is usually complete, because the views were built from QDirStat, which is deeper than WizTree in those areas. Where it is missing, it is missing entirely: there is no flat file list, no search, no file type view and no export.
@@ -90,9 +90,9 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 
 | WizTree feature | Status | OxTree today | What closing it touches |
 |---|---|---|---|
-| File View: every file and folder in one flat list sorted by size | Missing | | A second view over the same arena: a sorted index of all nodes, `show_rows` for the list, the same columns and context menu as the tree. The largest single gap |
-| Top 1000 files, max files to display setting | Missing | | The same view with a cap; sorting a million sizes takes a few milliseconds |
-| Folders shown in the File View | Missing | | Part of the file view |
+| File View: every file and folder in one flat list sorted by size | Done | File View tab (Ctrl+2): path, size, percent of total, last modified; sort by column; click selects, double click or Enter jumps to the item in the tree; same right-click menu | |
+| Top 1000 files, max files to display setting | Done | Show 1 000, 10 000, 100 000 or All, default 1 000 | The choice is not saved yet; a setting once the settings file exists |
+| Folders shown in the File View | Done | Folders checkbox, off by default | |
 | File Types view: extension, count, size, allocated, colour | Missing | | A HashMap by extension over the arena, a table with four columns, coloured by category; QDirStat's File Type Statistics window is the model |
 | Select all files of an extension | Missing | | Part of the file types view, needs multi-selection |
 | Duplicate files by name and size, or name, size and date | Missing | | Group by (name, size[, mtime]) over the arena, a count and a size per group, a "duplicates only" filter; by content is out of scope, as in WizTree |
@@ -194,7 +194,7 @@ What OxTree has that WizTree does not, so the comparison runs both ways: user-de
 
 Ordered by how much of WizTree's daily use each one unlocks, divided by what it touches.
 
-1. **File View with a top-N cap.** The second of WizTree's two views, and the one that answers "what are the biggest files". A sorted index over the arena, a flat list with the tree's columns and context menu, a cap setting. Needs nothing else first.
+1. **File View with a top-N cap.** Done 2026-10-22.
 2. **Search and filter.** The query parser in core with the wildcard, AND and OR, size, date and type operators, then a search box over the file view and a filter over the tree. The glob matcher exists.
 3. **File Types view.** Extension table with count, size and colour, double click to list the files of that type in the file view. QDirStat's window is the model.
 4. **CSV export and clipboard copy.** One writer in core, three menu entries, a headless command line mode.
