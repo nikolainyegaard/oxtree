@@ -140,10 +140,24 @@ impl Query {
     }
 }
 
+/// `needle` is already lowercase. ASCII text is scanned in place; anything
+/// else falls back to lowercasing, which allocates.
+fn contains_ignore_case(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    if haystack.is_ascii() && needle.is_ascii() {
+        let h = haystack.as_bytes();
+        let n = needle.as_bytes();
+        return h.len() >= n.len() && h.windows(n.len()).any(|w| w.eq_ignore_ascii_case(n));
+    }
+    haystack.to_lowercase().contains(needle)
+}
+
 fn term_matches(kind: &Kind, item: &Item, match_path: bool) -> bool {
     let subject = if match_path { item.path } else { item.name };
     match kind {
-        Kind::Substr(s) => subject.to_lowercase().contains(s.as_str()),
+        Kind::Substr(s) => contains_ignore_case(subject, s),
         Kind::Glob(g) => glob_match(g, subject, false),
         Kind::Regex(r) => r.is_match(subject),
         Kind::Size(c, v) => c.holds(item.size, *v),
@@ -407,6 +421,8 @@ mod tests {
     #[test]
     fn names_globs_and_or() {
         assert!(q("foo").matches(&file("MyFooFile.txt", 1, 0), false));
+        assert!(q("ÅSE").matches(&file("blåsebelg", 1, 0), false));
+        assert!(!q("xyz").matches(&file("xy", 1, 0), false));
         assert!(!q("foo").matches(&file("bar.txt", 1, 0), false));
         assert!(q("*.mp3").matches(&file("song.MP3", 1, 0), false));
         assert!(!q("*.mp3").matches(&file("song.mp3.bak", 1, 0), false));

@@ -64,6 +64,11 @@ pub struct FileViewState {
     pub match_path: bool,
     /// Set by Ctrl+F; the search box takes focus on the next frame.
     pub focus_search: bool,
+    /// The list is built on a worker thread so typing never waits for it.
+    /// `dirty` set while a job runs means one more run after it finishes,
+    /// so a burst of keystrokes costs at most two builds.
+    pub job: Option<Receiver<(u64, Vec<NodeId>)>>,
+    pub generation: u64,
 }
 
 impl Default for FileViewState {
@@ -81,6 +86,8 @@ impl Default for FileViewState {
             query: None,
             match_path: false,
             focus_search: false,
+            job: None,
+            generation: 0,
         }
     }
 }
@@ -492,6 +499,8 @@ impl OxTreeApp {
             }
         }
 
+        self.pump_file_view(ctx);
+
         if let Some(job) = &self.treemap.job {
             if let Ok(result) = job.try_recv() {
                 self.treemap.job = None;
@@ -736,10 +745,16 @@ impl OxTreeApp {
 
     // ------------------------------------------------------------ file view
 
-    pub fn rebuild_file_view(&mut self) {
+    /// Start building the list on a worker thread if it is out of date and
+    /// no build is running. The old rows stay on screen until the new ones
+    /// land in `pump`.
+    pub fn request_file_view(&mut self, ctx: &Context) {
+        if !self.file_view.dirty || self.file_view.job.is_some() {
+            return;
+        }
         self.file_view.dirty = false;
-        self.file_view.rows.clear();
         let Some(tree) = self.tree.clone() else {
+            self.file_view.rows.clear();
             return;
         };
         let fv = &mut self.file_view;
@@ -760,27 +775,60 @@ impl OxTreeApp {
         let match_path = fv.match_path;
         let needs_path = fv.query.as_ref().is_some_and(|q| q.needs_path(match_path));
         let query = fv.query.clone();
-        fv.rows = flat_list_filtered(&tree, fv.include_dirs, fv.sort, fv.ascending, fv.max, |n| {
-            let Some(q) = &query else { return true };
-            // ponytail: the path is built per node when the query needs it;
-            // a shared path buffer is the upgrade if a million-file path
-            // search ever feels slow.
-            let path = if needs_path {
-                tree.path(n)
-            } else {
-                String::new()
-            };
-            q.matches(
-                &Item {
-                    name: tree.name(n),
-                    path: &path,
-                    size: tree.size(n),
-                    mtime: tree.mtime(n),
-                    is_dir: tree.is_dir_like(n),
-                },
-                match_path,
-            )
-        });
+        let (include_dirs, sort, ascending, max) = (fv.include_dirs, fv.sort, fv.ascending, fv.max);
+        fv.generation += 1;
+        let generation = fv.generation;
+        let (tx, rx) = std::sync::mpsc::channel();
+        fv.job = Some(rx);
+        let repaint = ctx.clone();
+        std::thread::Builder::new()
+            .name("oxtree-search".into())
+            .spawn(move || {
+                let rows = flat_list_filtered(&tree, include_dirs, sort, ascending, max, |n| {
+                    let Some(q) = &query else { return true };
+                    // ponytail: the path is built per node when the query
+                    // needs it; a shared path buffer is the upgrade if a
+                    // million-file path search ever feels slow.
+                    let path = if needs_path {
+                        tree.path(n)
+                    } else {
+                        String::new()
+                    };
+                    q.matches(
+                        &Item {
+                            name: tree.name(n),
+                            path: &path,
+                            size: tree.size(n),
+                            mtime: tree.mtime(n),
+                            is_dir: tree.is_dir_like(n),
+                        },
+                        match_path,
+                    )
+                });
+                let _ = tx.send((generation, rows));
+                repaint.request_repaint();
+            })
+            .ok();
+    }
+
+    /// Called from `pump`: take a finished list, then start the next build
+    /// if the inputs changed while it ran.
+    fn pump_file_view(&mut self, ctx: &Context) {
+        let mut finished = false;
+        if let Some(rx) = &self.file_view.job {
+            if let Ok((generation, rows)) = rx.try_recv() {
+                if generation == self.file_view.generation {
+                    self.file_view.rows = rows;
+                }
+                finished = true;
+            }
+        }
+        if finished {
+            self.file_view.job = None;
+            if self.file_view.dirty {
+                self.request_file_view(ctx);
+            }
+        }
     }
 
     /// Ctrl+F: the File View with the search box focused.

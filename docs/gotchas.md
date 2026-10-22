@@ -24,6 +24,11 @@ Dated notes on things that look wrong until you know why, and on dead ends. Add 
 - **Camera recordings of a moving window are not evidence of a display fault.** A phone's rolling shutter samples the top and bottom of the frame on different refreshes, so a moving window shows as a band with a ghost, title bar included.
 - **A Spectacle window recording cannot show position glitches.** It records the surface content. Use a full-screen recording when the question is where things are on screen.
 
+## 2026-10-22, search
+
+- **The File View list is built on a worker thread** (`request_file_view`, `pump_file_view` in `app.rs`). The first version built it on the UI thread per keystroke, which froze the text field for the length of the build, up to a second on a home directory in path mode. Now the old rows stay until the new ones land, results carry a generation and stale ones are dropped, and keystrokes during a build coalesce into one more build. The search box itself is never blocked.
+- **Substring terms compare in place.** `contains_ignore_case` scans ASCII names with `eq_ignore_ascii_case` and only lowercases non-ASCII names, which are rare; the per-node `to_lowercase()` it replaced was most of the name-mode cost.
+
 ## Pinned for the settings work
 
 - **Cross filesystems as a preference.** `OxTreeApp::cross_filesystems`, read from `OXTREE_CROSS_FILESYSTEMS`, default off. Proposed key: `[DirectoryTree] CrossFilesystems`, QDirStat's name, default false. The Open Directory dialog should also get the checkbox QDirStat has there. The mount classification does not become a setting.

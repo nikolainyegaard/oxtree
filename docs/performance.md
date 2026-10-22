@@ -27,8 +27,8 @@ RSS is over budget in 0.1.0. See the memory section for where it goes and the pl
 | Render | 7.7 ms | 14 bands on 14 threads; the spike took 21 ms single-threaded |
 | Texture upload | about 1 ms | |
 | Cache write / parse, 352k nodes | 89 ms / 111 ms | Text format, 14.8 MB |
-| Search "lib >1k" over 357k nodes, by name | 31 ms | Substring plus size compare per node, then a sort of the hits; `--bench` prints it |
-| Search, the same query by path | 167 ms | Builds a path string per node; 816k nodes in a home directory take 174 ms, so it stays synchronous on the UI thread for now |
+| Search "lib >1k" over 357k nodes, by name | 18 ms | Substring compare in place on ASCII names, no allocation per node; `--bench` prints it |
+| Search, the same query by path | 95 ms | Builds a path string per node; 816k nodes in a home directory take 220 to 260 ms. The list is built on a worker thread, so typing never waits: a keystroke during a build marks the list dirty and one more build follows |
 | First frame | 75 ms | eframe on glow under Wayland; the spike measured 43 ms without menus and panels |
 
 Installed QDirStat 2.0 for comparison: read of /usr logged at 41.6 s, RSS 97 MB after that scan, 1.8 MB binary plus five Qt6 libraries.
