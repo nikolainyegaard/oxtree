@@ -33,8 +33,8 @@ Dated notes on things that look wrong until you know why, and on dead ends. Add 
 
 ## 2026-10-22, startup
 
-- **Starting the scan before the window delays the window.** The walk is syscall-bound on every core, so the single-threaded window setup (EGL init, shader compile) runs slower beside it: the empty window appears about 40 ms later and the tree about 90 ms earlier. The trade was taken for content; the numbers are in performance.md. Fewer early threads do not help: at 7 the tree gain halves, at 4 it is gone.
-- **Measure on mains.** On battery the powersave governor more than doubles the scan time (250 ms against 110 ms for /usr). Half an afternoon went into numbers that were only the battery.
+- **Starting the scan before the window delays the window.** The walk is syscall-bound on every core, so the single-threaded window setup (EGL init, shader compile) runs slower beside it: the empty window appears about 40 ms later and the tree about 90 ms earlier. Tried as the default for one commit and reverted the same day: the window's own latency is what a launch feels like. The early start stays behind `OXTREE_EARLY_SCAN=1`. Fewer early threads do not help: at 7 the tree gain halves, at 4 it is gone.
+- **Measure in the performance power profile.** The same binary starts in 34 ms in the performance profile and 86 to 90 ms in the balanced profile on battery, and scans /usr in 110 ms against 250 ms. Half an afternoon went into a "regression" from 30 to 90 ms that was the laptop being unplugged and moved to the sofa. Check `/sys/firmware/acpi/platform_profile` before trusting any timing.
 - **The dlopen figure in the startup map was measured with a one-off script outside the app**, not with anything in the repo, which is Rust only.
 
 ## 2026-10-22, root

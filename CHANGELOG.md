@@ -8,7 +8,7 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- `OXTREE_STARTUP=1` prints where the time before the first frame goes; `OXTREE_EARLY_SCAN=0` and `OXTREE_THREADS=N` for measuring
+- `OXTREE_STARTUP=1` prints where the time before the first frame goes; `OXTREE_EARLY_SCAN=1` and `OXTREE_THREADS=N` for measuring
 
 - File, Rescan as Root: OxTree running as root through polkit replaces the window on the same directory, for the directories the user cannot read; the title shows [root], configuration is read from the user and never written; a polkit action file in `packaging/`
 - A scan crosses into other local filesystems by default; kernel tables and network mounts stay out. The Open Directory dialog has the checkbox, lists every mounted local filesystem with size, used and free, and scans one with a click. Entered mount points keep a disk badge on their folder icon and the details panel names the filesystem
@@ -22,7 +22,7 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- The scan starts before the window is created and its threads wake the UI when they have news, so the tree is on screen about 90 ms sooner; the empty window appears about 40 ms later
+- Scan threads wake the UI when they have news, so a finished scan is drawn on the next frame; the configuration reads run on a thread started before the window
 - eframe 0.37: on Wayland, frames are paced by the compositor's frame callbacks instead of a blocking swap, and the app keeps running while the compositor withholds frames (locked screen, covered window)
 
 ### Fixed

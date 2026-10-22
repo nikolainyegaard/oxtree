@@ -11,7 +11,7 @@ Checked in the change checklist. A change that moves one says so in the commit b
 | Stripped release binary | 10 MB | 8.4 MB | `ls -l target/release/oxtree` |
 | Scan of /usr, 352k nodes, warm, on mains | 150 ms | 125 ms (250 ms on battery with the powersave governor) | `target/release/oxtree --bench /usr` |
 | Treemap layout plus render at 1900x600 | 15 ms | 1.7 + 7.7 ms | same |
-| First frame | 100 ms | 82 to 109 ms | `target/release/oxtree /usr 2>&1 \| grep 'first frame'`; stages with `OXTREE_STARTUP=1` |
+| First frame, performance power profile | 50 ms | 34 ms (86 to 90 ms in the balanced profile on battery) | `target/release/oxtree /usr 2>&1 \| grep 'first frame'`; stages with `OXTREE_STARTUP=1`; check `/sys/firmware/acpi/platform_profile` first |
 | RSS with /usr loaded and the window open | 120 MB | 133 MB (115 MB with `MALLOC_ARENA_MAX=2`) | `grep -E '^(Rss\|Pss\|Anonymous)' /proc/$(pgrep -n -x oxtree)/smaps_rollup` |
 | Tree memory per node | 56 bytes | about 55 bytes | arithmetic on the arena arrays, see below |
 
@@ -73,7 +73,7 @@ Facts behind the walker, so nobody re-derives them:
 
 ## Launch
 
-Where the time before the first frame goes, measured 2026-10-22 with `OXTREE_STARTUP=1` over several runs on this laptop (Intel MTL graphics, Mesa 26.2.3, KDE Wayland, 60 Hz). The first frame lands at 82 to 109 ms after `main`; the bare eframe window of the spike, with no menus or panels, measured the same 77 to 91 ms, so almost all of it is window setup, not OxTree.
+Where the time before the first frame goes, measured 2026-10-22 with `OXTREE_STARTUP=1` over several runs on this laptop (Intel MTL graphics, Mesa 26.2.3, KDE Wayland, 60 Hz) in the balanced power profile on battery. In that profile the first frame lands at 82 to 109 ms after `main`; in the performance profile the same binary lands at 34 ms, and the whole table scales with it. The bare eframe window of the spike, with no menus or panels, measured the same as OxTree in both, so almost all of it is window setup, not OxTree.
 
 | Stage | ms | What it is |
 |-------|---:|------------|
@@ -92,7 +92,7 @@ Experiments that did not move it: `LIBGL_ALWAYS_SOFTWARE=1` (same, llvmpipe load
 
 What was shaved, and what the measurements said:
 
-1. **The scan starts at `main` entry, before the window.** Done. It is not a free overlap: the walk is syscall-bound on every core, and the single-threaded window setup slows down while it runs. Measured on battery (powersave governor, where a scan of /usr takes 250 ms instead of 110 ms on mains), three runs each:
+1. **Starting the scan at `main` entry, before the window.** Built, measured, and left off by default. It is not a free overlap: the walk is syscall-bound on every core, and the single-threaded window setup slows down while it runs. Measured on battery (powersave governor, where a scan of /usr takes 250 ms instead of 110 ms on mains), three runs each:
 
    | Scan start | Threads | First frame | Tree on screen |
    |---|---:|---:|---:|
@@ -101,13 +101,13 @@ What was shaved, and what the measurements said:
    | before the window | 7 | 97 to 120 ms | 310 to 335 ms |
    | before the window | 4 | 96 to 122 ms | 416 to 424 ms |
 
-   The tree arrives about 90 ms earlier and the empty window about 40 ms later. Content is what a disk tool is launched for, so that is the default; `OXTREE_EARLY_SCAN=0` restores the old order and `OXTREE_THREADS=N` sets the worker count, both for measuring.
+   The tree arrives about 90 ms earlier and the empty window about 40 ms later, and on a home directory scan the user's own log showed the EGL init stretched from 39 to 65 ms beside the walk. The window comes first; `OXTREE_EARLY_SCAN=1` starts the scan before it and `OXTREE_THREADS=N` sets the worker count, both for measuring.
 2. **The scan threads wake the UI.** Done. Every scan event calls back into egui's `request_repaint`, so a finished scan is drawn on the next frame instead of on the next 100 ms poll. Same for later rescans.
 3. **`date +%z` and the cleanups file run on a thread started at `main` entry.** Done. The constructor's own cost went from 2 to 3 ms to 0.1 to 0.2 ms.
 4. **Load Mesa on a thread at `main` entry.** Not done. A `dlopen` of libEGL_mesa while winit talks to the compositor; glutin then finds it mapped. Expected 15 to 25 ms off the first frame, less now that the scan competes for the cores during setup. Needs the `libloading` crate since the workspace forbids `unsafe`.
 5. **wgpu over Vulkan instead of glow** would avoid libgallium and libLLVM entirely, since the Intel Vulkan driver does not link LLVM. Whether wgpu's own instance, adapter and shader setup is cheaper is an experiment, not a known: build the spike with the wgpu feature and compare. Not done.
 
-Measure on mains power with the governor in its normal state. On battery this laptop's powersave governor more than doubles the scan time, and every number above moves with it.
+Measure in the performance power profile (`/sys/firmware/acpi/platform_profile`), docked. In the balanced profile on battery this laptop takes 2.5 times as long to the first frame (86 to 90 ms against 34) and more than twice as long to scan (250 ms against 110 for /usr); every number in this file moves with the profile, so note it next to any number you add.
 
 The release profile is `lto = "fat"`, `codegen-units = 1`, `panic = "abort"`, `strip = true`.
 
@@ -119,7 +119,7 @@ Environment variables and flags read at startup, for measuring and for bisecting
 |--------|--------|
 | `OXTREE_STATS=1` | Prints treemap rebuild counts and process CPU time once a second to stderr |
 | `OXTREE_REBUILD_DELAY_MS=200` | Waits for the treemap size to settle before rebuilding (QDirStat's behaviour); default 0 |
-| `OXTREE_EARLY_SCAN=0` | Starts the scan from the constructor, after the window, instead of at `main` entry |
+| `OXTREE_EARLY_SCAN=1` | Starts the scan at `main` entry, before the window, instead of from the constructor after it |
 | `OXTREE_THREADS=N` | Scan worker threads; default one per core, capped at 16 |
 | `OXTREE_STARTUP=1` | Prints the startup stages, about ten lines, each with the time since the previous one; `OXTREE_T0=$(date +%s%N)` on the same command line adds the exec and loader time |
 | `OXTREE_STARTUP=2` | The stages plus every log record from eframe, winit, glutin and the Wayland client that followed a gap of a quarter millisecond or more |

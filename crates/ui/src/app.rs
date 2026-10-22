@@ -252,8 +252,8 @@ pub fn process_cpu_ms() -> Option<u64> {
 pub struct EarlyWork {
     scan: Option<(PathBuf, ScanHandle, Instant)>,
     wake: Wake,
-    /// `OXTREE_EARLY_SCAN=0`: start from the constructor instead, after
-    /// the window, for comparison.
+    /// The default: start from the constructor, after the window.
+    /// `OXTREE_EARLY_SCAN=1` starts the scan here instead, before it.
     late_start: Option<PathBuf>,
     mounts: oxtree_native::mounts::MountTable,
     cross_filesystems: bool,
@@ -284,7 +284,10 @@ fn scan_defaults() -> (usize, bool) {
 pub fn begin_early(start: Option<PathBuf>) -> EarlyWork {
     let (threads, cross_filesystems) = scan_defaults();
     let mounts = oxtree_native::mounts::MountTable::load();
-    let early_scan = !std::env::var_os("OXTREE_EARLY_SCAN").is_some_and(|v| v == "0");
+    // Off by default: the walk saturates every core and the window setup
+    // slows down beside it, so the window would appear later. Numbers in
+    // performance.md.
+    let early_scan = std::env::var_os("OXTREE_EARLY_SCAN").is_some_and(|v| v == "1");
     let wake = Wake::default();
     let mut late_start = None;
     let scan = start.filter(|p| {
