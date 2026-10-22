@@ -46,7 +46,81 @@ fn parse_args() -> Args {
     args
 }
 
+/// `OXTREE_STARTUP=1` prints where the time before the first frame goes.
+/// `OXTREE_T0` may carry the launching shell's epoch nanoseconds so the
+/// exec and loader stage is measured too.
+fn startup_mark(label: &str) {
+    thread_local! {
+        static LAST: std::cell::Cell<Option<Instant>> = const { std::cell::Cell::new(None) };
+    }
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if !*ON.get_or_init(|| std::env::var_os("OXTREE_STARTUP").is_some()) {
+        return;
+    }
+    LAST.with(|last| {
+        let now = Instant::now();
+        let since = last.get().map(|l| (now - l).as_secs_f64() * 1000.0);
+        last.set(Some(now));
+        match since {
+            Some(ms) => eprintln!("startup  +{ms:7.2} ms  {label}"),
+            None => {
+                let from_shell = std::env::var("OXTREE_T0")
+                    .ok()
+                    .and_then(|t| t.parse::<u128>().ok())
+                    .and_then(|t0| {
+                        let now_ns = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .ok()?
+                            .as_nanos();
+                        Some((now_ns.saturating_sub(t0)) as f64 / 1e6)
+                    });
+                match from_shell {
+                    Some(ms) => eprintln!("startup  +{ms:7.2} ms  {label} (from the shell's exec)"),
+                    None => eprintln!("startup           {label}"),
+                }
+            }
+        }
+    });
+}
+
+/// With `OXTREE_STARTUP=1`, every log record from eframe, winit, glutin,
+/// the Wayland client and egui is printed with the time since the last
+/// one, which is the only way to see where the window setup spends its
+/// time without a tracer.
+struct StartupLogger {
+    last: std::sync::Mutex<Option<Instant>>,
+}
+
+impl log::Log for StartupLogger {
+    fn enabled(&self, _: &log::Metadata) -> bool {
+        true
+    }
+    fn log(&self, record: &log::Record) {
+        let now = Instant::now();
+        let mut last = self.last.lock().unwrap_or_else(|e| e.into_inner());
+        let since = last
+            .map(|l| (now - l).as_secs_f64() * 1000.0)
+            .unwrap_or(0.0);
+        *last = Some(now);
+        eprintln!(
+            "startup  +{since:7.2} ms    [{}] {}",
+            record.target(),
+            record.args()
+        );
+    }
+    fn flush(&self) {}
+}
+
+static STARTUP_LOGGER: StartupLogger = StartupLogger {
+    last: std::sync::Mutex::new(None),
+};
+
 fn main() {
+    startup_mark("main entered: exec, dynamic loader, static init");
+    if std::env::var_os("OXTREE_STARTUP").is_some() {
+        let _ = log::set_logger(&STARTUP_LOGGER);
+        log::set_max_level(log::LevelFilter::Trace);
+    }
     let args = parse_args();
     if args.help {
         out(
@@ -60,6 +134,7 @@ fn main() {
         return;
     }
     let started = Instant::now();
+    startup_mark("arguments parsed");
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(if oxtree_native::root::is_root() {
@@ -76,9 +151,11 @@ fn main() {
         "OxTree",
         options,
         Box::new(move |_cc| {
+            startup_mark("window, GL context and egui ready (winit, Wayland, glutin, Mesa)");
             Ok(Box::new(Shell {
                 app: {
                     let mut app = OxTreeApp::new(args.path, args.cache, args.screenshot);
+                    startup_mark("OxTreeApp::new: config, date +%z, categories, scan thread start");
                     if args.files_view {
                         app.view = oxtree_ui::app::View::Files;
                     }
@@ -90,6 +167,7 @@ fn main() {
                 },
                 started,
                 first_frame: true,
+                frames: 0,
             }))
         }),
     );
@@ -103,6 +181,7 @@ struct Shell {
     app: OxTreeApp,
     started: Instant,
     first_frame: bool,
+    frames: u32,
 }
 
 impl eframe::App for Shell {
@@ -120,6 +199,7 @@ impl eframe::App for Shell {
         let ctx = root.ctx().clone();
         if self.first_frame {
             self.first_frame = false;
+            startup_mark("first update called: event loop warm-up, first redraw request");
             eprintln!(
                 "first frame after {:.1} ms",
                 self.started.elapsed().as_secs_f64() * 1000.0
@@ -165,6 +245,14 @@ impl eframe::App for Shell {
 
         oxtree_ui::dialogs::show(app, &ctx);
         screenshot_step(app, &ctx);
+        if self.frames < 3 {
+            self.frames += 1;
+            match self.frames {
+                1 => startup_mark("first update built: menus, panels, views, font atlas"),
+                2 => startup_mark("second update: the first frame was tessellated, uploaded, drawn and swapped before this"),
+                _ => {}
+            }
+        }
     }
 }
 

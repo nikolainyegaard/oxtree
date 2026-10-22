@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+log = "0.4.34"
 eframe.workspace = true
 oxtree-core.workspace = true
 oxtree-native.workspace = true

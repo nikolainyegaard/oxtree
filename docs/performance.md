@@ -11,7 +11,7 @@ Checked in the change checklist. A change that moves one says so in the commit b
 | Stripped release binary | 10 MB | 8.4 MB | `ls -l target/release/oxtree` |
 | Scan of /usr, 352k nodes, warm | 150 ms | 125 ms | `target/release/oxtree --bench /usr` |
 | Treemap layout plus render at 1900x600 | 15 ms | 1.7 + 7.7 ms | same |
-| First frame | 100 ms | 75 ms | `target/release/oxtree /usr 2>&1 \| grep 'first frame'` |
+| First frame | 100 ms | 82 to 109 ms | `target/release/oxtree /usr 2>&1 \| grep 'first frame'`; stages with `OXTREE_STARTUP=1` |
 | RSS with /usr loaded and the window open | 120 MB | 133 MB (115 MB with `MALLOC_ARENA_MAX=2`) | `grep -E '^(Rss\|Pss\|Anonymous)' /proc/$(pgrep -n -x oxtree)/smaps_rollup` |
 | Tree memory per node | 56 bytes | about 55 bytes | arithmetic on the arena arrays, see below |
 
@@ -73,7 +73,31 @@ Facts behind the walker, so nobody re-derives them:
 
 ## Launch
 
-Nothing runs before the first frame except reading the cleanup configuration and `date +%z`. The scan starts from the constructor on its own threads. The release profile is `lto = "fat"`, `codegen-units = 1`, `panic = "abort"`, `strip = true`. The dynamic loader is five shared objects and under 300 relocations, which is noise.
+Where the time before the first frame goes, measured 2026-10-22 with `OXTREE_STARTUP=1` over several runs on this laptop (Intel MTL graphics, Mesa 26.2.3, KDE Wayland, 60 Hz). The first frame lands at 82 to 109 ms after `main`; the bare eframe window of the spike, with no menus or panels, measured the same 77 to 91 ms, so almost all of it is window setup, not OxTree.
+
+| Stage | ms | What it is |
+|-------|---:|------------|
+| exec, dynamic loader, static init | 3 to 4 | Five shared objects, under 300 relocations; `--help` round-trips in 2 ms |
+| Wayland connection, registry roundtrip, globals bound | 10 to 17 | winit's event loop and the smithay client toolkit |
+| EGL display init and config choice | 39 to 48 | `dlopen` of libEGL_mesa pulls in libgallium and libLLVM, 210 MB of mapped library; the dlopen alone measures 26 ms from Python. The largest single item and not ours |
+| Wayland window, egui-winit state, clipboard | 4 to 7 | xdg surface, decorations, data-control clipboard |
+| EGL surface, make current, swap interval | 2 to 3 | |
+| egui_glow painter: shader compile, link, VAO | 8 to 10 | Mesa's shader cache makes no measurable difference, so this is the cost even when cached |
+| `OxTreeApp::new` | 2 to 3 | cleanups file, `date +%z` as a child process, category table, scan thread start |
+| event loop warm-up to the first update | 3 to 14 | |
+| first update: menus, panels, views, font atlas | 3 to 9 | |
+| first frame on screen | after that | tessellate, upload, draw, swap, then the window is mapped and the compositor presents it; the second update arrives 36 to 46 ms later, two to three vblanks |
+
+Experiments that did not move it: `LIBGL_ALWAYS_SOFTWARE=1` (same, llvmpipe loads the same LLVM), `MESA_SHADER_CACHE_DISABLE=true` (same), the X11 backend (105 to 119 ms, slower).
+
+What can be shaved, in order of what the user would notice:
+
+1. **Start the scan before the window.** The scan starts from the constructor, which runs after the 85 ms of window setup. Started at `main` entry it overlaps that setup, and the tree lands about 85 ms earlier. The first frame does not change; time to content does.
+2. **Load Mesa on a thread at `main` entry.** A `dlopen` of libEGL_mesa on a background thread while winit talks to the compositor; glutin then finds it mapped. Expected 15 to 25 ms off the first frame. Needs the `libloading` crate (small) since the workspace forbids `unsafe`; a missing or renamed library is ignored.
+3. **`date +%z` and the cleanups file on a thread at `main` entry**, collected in the constructor. 2 to 3 ms.
+4. **wgpu over Vulkan instead of glow** would avoid libgallium and libLLVM entirely, since the Intel Vulkan driver does not link LLVM. Whether wgpu's own instance, adapter and shader setup is cheaper is an experiment, not a known: build the spike with the wgpu feature and compare. Not done.
+
+The release profile is `lto = "fat"`, `codegen-units = 1`, `panic = "abort"`, `strip = true`.
 
 ## Diagnostic switches
 
@@ -83,6 +107,7 @@ Environment variables and flags read at startup, for measuring and for bisecting
 |--------|--------|
 | `OXTREE_STATS=1` | Prints treemap rebuild counts and process CPU time once a second to stderr |
 | `OXTREE_REBUILD_DELAY_MS=200` | Waits for the treemap size to settle before rebuilding (QDirStat's behaviour); default 0 |
+| `OXTREE_STARTUP=1` | Prints each startup stage with the time since the previous one, and every log record from eframe, winit, glutin, the Wayland client and egui the same way; `OXTREE_T0=$(date +%s%N)` on the same command line adds the exec and loader time |
 | `--screenshot FILE.ppm` | Writes the first full frame and prints its minimum alpha and translucent pixel count to stderr; must say `min 255` |
 
 ## Dead ends
