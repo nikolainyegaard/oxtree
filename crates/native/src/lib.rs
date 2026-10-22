@@ -6,6 +6,7 @@ pub mod cache_io;
 pub mod config;
 pub mod dialog;
 pub mod localtime;
+pub mod mounts;
 pub mod run;
 pub mod trash;
 pub mod walker;

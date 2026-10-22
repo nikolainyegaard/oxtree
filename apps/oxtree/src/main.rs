@@ -180,7 +180,7 @@ fn out(line: String) {
 fn bench(path: PathBuf) {
     let t0 = Instant::now();
     let (tree, scan_elapsed) =
-        match oxtree_native::walker::scan_blocking(&path, oxtree_native::ScanOptions::default()) {
+        match oxtree_native::walker::scan_blocking(&path, bench_scan_options()) {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("{e}");
@@ -254,4 +254,20 @@ fn bench(path: PathBuf) {
         text.len(),
         back.is_ok()
     ));
+}
+
+/// The benchmark honours the same environment switch as the app, so a scan
+/// of / can be timed with and without crossing filesystems.
+fn bench_scan_options() -> oxtree_native::ScanOptions {
+    let cross =
+        std::env::var_os("OXTREE_CROSS_FILESYSTEMS").is_some_and(|v| v == "1" || v == "true");
+    oxtree_native::ScanOptions {
+        cross_filesystems: cross,
+        mounts: if cross {
+            oxtree_native::mounts::MountTable::load()
+        } else {
+            Default::default()
+        },
+        ..Default::default()
+    }
 }

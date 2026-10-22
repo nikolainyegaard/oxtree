@@ -18,10 +18,16 @@ use std::time::{Duration, Instant};
 
 use oxtree_core::{DirRecord, FileRecord, Kind, Tree};
 
+use crate::mounts::MountTable;
+
 #[derive(Clone, Debug)]
 pub struct ScanOptions {
     /// Enter directories on other filesystems. QDirStat's default is off.
     pub cross_filesystems: bool,
+    /// Which other filesystems to enter when crossing: real local storage
+    /// only, never kernel tables or network mounts. Loaded from
+    /// /proc/self/mounts when `cross_filesystems` is set.
+    pub mounts: MountTable,
     /// Directory names never entered. QDirStat's default rule is `.snapshot`.
     pub exclude_names: Vec<String>,
     /// Worker threads; 0 means one per core, capped at 16.
@@ -32,6 +38,7 @@ impl Default for ScanOptions {
     fn default() -> Self {
         ScanOptions {
             cross_filesystems: false,
+            mounts: MountTable::default(),
             exclude_names: vec![".snapshot".into()],
             threads: 0,
         }
@@ -67,6 +74,8 @@ struct Job {
     path: PathBuf,
     id: usize,
     parent: usize,
+    /// Device id of this directory; a child on another device is a boundary.
+    dev: u64,
 }
 
 struct Shared {
@@ -145,6 +154,7 @@ fn run_scan(root: PathBuf, options: ScanOptions, tx: Sender<ScanEvent>, cancel: 
             path: root.clone(),
             id: 0,
             parent: usize::MAX,
+            dev: root_dev,
         }]),
         cv: Condvar::new(),
         pending: AtomicUsize::new(1),
@@ -158,7 +168,7 @@ fn run_scan(root: PathBuf, options: ScanOptions, tx: Sender<ScanEvent>, cancel: 
 
     std::thread::scope(|scope| {
         for _ in 0..threads {
-            scope.spawn(|| worker(&shared, &options, root_dev, &results));
+            scope.spawn(|| worker(&shared, &options, &results));
         }
         // Progress three times a second, like QDirStat's UpdateTimerMillisec,
         // but notice completion within a few milliseconds.
@@ -211,12 +221,7 @@ fn run_scan(root: PathBuf, options: ScanOptions, tx: Sender<ScanEvent>, cancel: 
     }
 }
 
-fn worker(
-    shared: &Shared,
-    options: &ScanOptions,
-    root_dev: u64,
-    results: &Mutex<Vec<(usize, DirRecord)>>,
-) {
+fn worker(shared: &Shared, options: &ScanOptions, results: &Mutex<Vec<(usize, DirRecord)>>) {
     let mut local: Vec<(usize, DirRecord)> = Vec::new();
     loop {
         let job = {
@@ -235,7 +240,7 @@ fn worker(
             }
         };
         let Some(job) = job else { break };
-        let read = read_dir(shared, options, root_dev, &job);
+        let read = read_dir(shared, options, &job);
         shared.items.fetch_add(
             read.record.files.len() + read.record.subdirs.len(),
             Ordering::Relaxed,
@@ -271,7 +276,7 @@ struct DirRead {
     skipped: Vec<(usize, DirRecord)>,
 }
 
-fn read_dir(shared: &Shared, options: &ScanOptions, root_dev: u64, job: &Job) -> DirRead {
+fn read_dir(shared: &Shared, options: &ScanOptions, job: &Job) -> DirRead {
     let is_root = job.parent == usize::MAX;
     let name = if is_root {
         job.path.to_string_lossy().into_owned()
@@ -311,7 +316,9 @@ fn read_dir(shared: &Shared, options: &ScanOptions, root_dev: u64, job: &Job) ->
             let id = shared.next_id.fetch_add(1, Ordering::Relaxed);
             read.record.subdirs.push(id);
             let excluded = options.exclude_names.contains(&entry_name);
-            let other_fs = md.dev() != root_dev && !options.cross_filesystems;
+            let boundary = md.dev() != job.dev;
+            let other_fs = boundary
+                && !(options.cross_filesystems && options.mounts.should_enter(&entry.path()));
             if excluded || other_fs {
                 let kind = if excluded {
                     Kind::UnreadDir
@@ -335,6 +342,7 @@ fn read_dir(shared: &Shared, options: &ScanOptions, root_dev: u64, job: &Job) ->
                     path: entry.path(),
                     id,
                     parent: job.id,
+                    dev: md.dev(),
                 });
             }
         } else {

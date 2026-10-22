@@ -136,6 +136,9 @@ pub struct OxTreeApp {
     pub desktop: String,
     pub shading: Shading,
     pub threads: usize,
+    /// Enter other local filesystems when scanning. Off by default, as in
+    /// QDirStat; `OXTREE_CROSS_FILESYSTEMS=1` until it is a setting.
+    pub cross_filesystems: bool,
 
     pub screenshot: Option<(PathBuf, u32)>,
     pub quit_after_screenshot: bool,
@@ -216,6 +219,8 @@ impl OxTreeApp {
                 .map(|n| n.get())
                 .unwrap_or(4)
                 .min(16),
+            cross_filesystems: std::env::var_os("OXTREE_CROSS_FILESYSTEMS")
+                .is_some_and(|v| v == "1" || v == "true"),
             screenshot: screenshot.map(|p| (p, 4)),
             quit_after_screenshot: false,
             rebuild_delay: Duration::from_millis(
@@ -305,6 +310,12 @@ impl OxTreeApp {
             &path,
             ScanOptions {
                 threads: self.threads,
+                cross_filesystems: self.cross_filesystems,
+                mounts: if self.cross_filesystems {
+                    oxtree_native::mounts::MountTable::load()
+                } else {
+                    Default::default()
+                },
                 ..Default::default()
             },
         ));
