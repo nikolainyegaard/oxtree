@@ -57,6 +57,11 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
                 if kind == Kind::MountPoint {
                     row(ui, "Status:", "Other filesystem, not read".into());
                 }
+                if kind == Kind::MountPoint || app.entered_mounts.contains(&n) {
+                    if let Some(m) = app.mounts.at(std::path::Path::new(&tree.path(n))) {
+                        row(ui, "Filesystem:", format!("{} on {}", m.fs_type, m.device));
+                    }
+                }
             } else {
                 row(ui, "Size:", format::size(tree.size(n)));
                 row(ui, "Allocated:", format::bytes(tree.size(n)));

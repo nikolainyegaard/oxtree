@@ -1,6 +1,6 @@
 # OxTree vs WizTree: target-app parity
 
-> **Last reviewed:** 2026-10-22 · **Last updated:** 2026-10-22 · **Change:** search landed (WizTree syntax, name or path mode, regex via regex-lite, highlighted matches, Ctrl+F); earlier the same day: File View landed (flat list, top-N cap, folders toggle, Ctrl+1 and Ctrl+2); earlier the same day: first version, inventory taken from WizTree's guide, feature page and version history · **Target:** WizTree 4.33 for Windows (16 September 2026), with WizTreeMac 1.00 as the reference for what WizTree does without an MFT
+> **Last reviewed:** 2026-10-22 · **Last updated:** 2026-10-22 · **Change:** crossing local filesystems is the default, mounted filesystem list in Open Directory, entered mount points marked; a Ports section pins the Windows MFT reader and the macOS branch; earlier the same day: search landed (WizTree syntax, name or path mode, regex via regex-lite, highlighted matches, Ctrl+F); earlier the same day: File View landed (flat list, top-N cap, folders toggle, Ctrl+1 and Ctrl+2); earlier the same day: first version, inventory taken from WizTree's guide, feature page and version history · **Target:** WizTree 4.33 for Windows (16 September 2026), with WizTreeMac 1.00 as the reference for what WizTree does without an MFT
 
 The authoritative answer to "how close is OxTree to WizTree, and what is left". Each row is a WizTree feature, what OxTree has for it today, and what closing the gap touches. The ranked list of what to build next is at the end. QDirStat is the reference for behaviour and defaults where WizTree has nothing to say; it is not the target.
 
@@ -8,8 +8,8 @@ The authoritative answer to "how close is OxTree to WizTree, and what is left". 
 
 | Number | Value | How |
 |---|---|---|
-| **Feature breadth** (does each WizTree feature exist?) | **46%** | Done rows plus half of Partial rows, over the 96 rows that apply on Linux; counted from the tables below |
-| **Rows** | 35 done, 19 partial, 42 missing, 6 not applicable, 3 declined | counted over the status column of the tables below |
+| **Feature breadth** (does each WizTree feature exist?) | **48%** | Done rows plus half of Partial rows, over the 96 rows that apply on Linux; counted from the tables below |
+| **Rows** | 37 done, 19 partial, 40 missing, 6 not applicable, 3 declined | counted over the status column of the tables below |
 | **Stage** | **alpha** | Scan, tree, treemap, cleanups and trash work end to end; everything WizTree calls the File View does not exist yet |
 
 The number is honest about breadth only. Where OxTree has a feature it is usually complete, because the views were built from QDirStat, which is deeper than WizTree in those areas. Where it is missing, it is missing entirely: there is no flat file list, no search, no file type view and no export.
@@ -39,14 +39,14 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 | Scan a whole drive or a single folder | Done | Any directory from the command line or Open Directory | |
 | Scan several drives or folders at once, custom folder list | Missing | One root per window | A virtual root with several children in the arena; Open Directory taking several paths |
 | Scan network drives and non-NTFS volumes | Partial | Any mounted filesystem can be the root; crossing into network mounts during a scan is refused by the mount rules | Nothing to change unless someone asks to cross into NFS |
-| Cross into other local filesystems during a scan | Partial | Logic exists behind `OXTREE_CROSS_FILESYSTEMS=1`, kernel tables and network mounts stay leaves | A checkbox in Open Directory and a setting, pinned in gotchas.md |
+| Cross into other local filesystems during a scan | Done | On by default, as `du` and `ncdu` do; kernel tables and network mounts stay leaves, and removable media under /run with them. Checkbox in Open Directory; `OXTREE_CROSS_FILESYSTEMS=0` for the old behaviour until it is a saved setting. Entered mount points keep a disk badge on their folder icon and show their filesystem in the details panel | Persist the checkbox once the settings file exists |
 | Scan phones and cameras over MTP | N/A | | GVFS exposes MTP as a mount, so a scan of /run/user/*/gvfs would work; not planned |
 | Hard-linked files counted once, allocated totals match the OS | Missing | Each link counted | Track (dev, inode) for nlink > 1 in the walker, keep the first; QDirStat does the same |
 | Allocated size and file size both available | Partial | Allocated size only (`st_blocks * 512`); the details panel shows it under both labels | A second u64 per node (8 MB per million files) and a column toggle |
-| Total, free and reserved space of the volume | Missing | | `df` as a child process or one statvfs call; a free-space row in the tree and a grey area in the treemap |
+| Total, free and reserved space of the volume | Partial | Size, used and free per mounted filesystem in the Open Directory list, from `df` | A free-space row in the tree and a grey area in the treemap |
 | Include and exclude filters applied during the scan | Partial | Exclude by directory name only, default `.snapshot` | Glob patterns on full paths, from the settings file; the glob matcher exists |
 | File system monitoring, live updates | Declined | | inotify on a million directories is not viable; F5 and the rescan after cleanups cover it |
-| Drive list with automatic refresh on USB insert | Missing | | A mount list in Open Directory from `/proc/self/mounts`, already parsed for the crossing rules |
+| Drive list with automatic refresh on USB insert | Done | Open Directory lists every mounted local filesystem with type, size, used and free and a Scan button; reloaded each time the dialog opens | |
 | Rescan with F5, keeping the view where it was | Done | Old tree stays on screen, selection, expanded folders and zoom carry over by path | |
 | Scan progress in the status bar and on the taskbar | Partial | Status bar shows items, directories and bytes three times a second; no taskbar progress | Taskbar progress is not a Linux desktop convention; nothing planned |
 | Long path support | Done | No path length limit on Linux | |
@@ -185,6 +185,13 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 | Reset configuration | Missing | | Delete the settings file and reload defaults; part of the Preferences dialog |
 | Translations | Missing | | English only; strings are literals in the views |
 | Supporter code, enterprise licence | N/A | GPL | |
+
+## Ports
+
+Pinned, not scheduled. Nothing outside `crates/native` touches the operating system, so a port is one crate's worth of branches.
+
+- **Windows, only with an MFT reader.** A directory walk on NTFS would land in WinDirStat territory and lose to WizTree on the one number its users care about, so a Windows build is worth doing only with WizTree's approach: read the volume raw through `\\.\C:` with administrator rights, parse the MFT (boot sector, `$MFT` data runs, file records, `$FILE_NAME` and `$DATA` attributes, attribute lists, hard links) and assemble the tree from parent references. That is a project of its own, a few thousand lines plus a corpus of real volumes, and it needs `unsafe` for the raw handle, which the workspace forbids today; the ordinary walk stays for exFAT, ReFS and network shares, as WizTree's own fallback does. Everything above the native crate, the arena, the treemap, the views, the search and the cache files, is already platform-agnostic.
+- **macOS, a native branch of the same crate.** The walk, the shell cleanups, gzip and date work unchanged. Mounts come from `mount` or `getmntinfo`, trash and the directory chooser through `osascript`, the terminal and file manager are Terminal.app and `open -R`. WizTreeMac has no MFT either and scans with bulk directory enumeration on threads, which is what OxTree does.
 
 ## Beyond WizTree
 

@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 use eframe::egui::{self, Context, Id};
 
+use oxtree_core::format;
+
 use crate::app::OxTreeApp;
 
 pub fn show(app: &mut OxTreeApp, ctx: &Context) {
@@ -22,8 +24,9 @@ fn open_directory(app: &mut OxTreeApp, ctx: &Context) {
     let mut close = false;
     let mut open = None;
     let mut browse = false;
+    app.load_volumes();
     egui::Modal::new(Id::unique("open-dir")).show(ctx, |ui| {
-        ui.set_width(520.0);
+        ui.set_width(560.0);
         ui.heading("Open Directory");
         ui.label("Directory to scan:");
         let resp = ui.add(
@@ -35,6 +38,35 @@ fn open_directory(app: &mut OxTreeApp, ctx: &Context) {
             resp.request_focus();
         }
         let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        ui.add_space(8.0);
+        ui.checkbox(
+            &mut app.cross_filesystems,
+            "Cross into other local filesystems (kernel tables and network mounts stay out)",
+        );
+        ui.add_space(8.0);
+        ui.label("Mounted filesystems:");
+        egui::Grid::new("volumes")
+            .num_columns(6)
+            .spacing([12.0, 2.0])
+            .striped(true)
+            .show(ui, |ui| {
+                for label in ["Mount", "Type", "Size", "Used", "Free", ""] {
+                    ui.label(egui::RichText::new(label).weak());
+                }
+                ui.end_row();
+                for v in app.volumes.clone().unwrap_or_default() {
+                    let path = v.mount.path.to_string_lossy().into_owned();
+                    ui.label(&path);
+                    ui.label(&v.mount.fs_type);
+                    ui.label(format::size(v.size));
+                    ui.label(format::size(v.used));
+                    ui.label(format::size(v.avail));
+                    if ui.button("Scan").clicked() {
+                        open = Some(path);
+                    }
+                    ui.end_row();
+                }
+            });
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             if ui
@@ -68,9 +100,11 @@ fn open_directory(app: &mut OxTreeApp, ctx: &Context) {
             path.to_string()
         };
         app.open_dir_text = None;
+        app.volumes = None;
         app.open_directory(PathBuf::from(expanded));
     } else if close && (app.tree.is_some() || app.scan.is_some()) {
         app.open_dir_text = None;
+        app.volumes = None;
     }
 }
 

@@ -201,6 +201,14 @@ pub struct OxTreeApp {
     /// Enter other local filesystems when scanning. Off by default, as in
     /// QDirStat; `OXTREE_CROSS_FILESYSTEMS=1` until it is a setting.
     pub cross_filesystems: bool,
+    /// The mount table at the last scan start, for the tree icons and the
+    /// details panel.
+    pub mounts: oxtree_native::mounts::MountTable,
+    /// Directories in the tree that are mount points of filesystems the
+    /// scan entered, so the boundary stays visible.
+    pub entered_mounts: HashSet<NodeId>,
+    /// Loaded when the Open Directory dialog opens, dropped when it closes.
+    pub volumes: Option<Vec<oxtree_native::mounts::Volume>>,
 
     pub screenshot: Option<(PathBuf, u32)>,
     pub quit_after_screenshot: bool,
@@ -284,8 +292,13 @@ impl OxTreeApp {
                 .map(|n| n.get())
                 .unwrap_or(4)
                 .min(16),
-            cross_filesystems: std::env::var_os("OXTREE_CROSS_FILESYSTEMS")
-                .is_some_and(|v| v == "1" || v == "true"),
+            // On by default: a scan of / should show the machine, as du and
+            // ncdu do. Kernel tables and network mounts stay out either way.
+            cross_filesystems: !std::env::var_os("OXTREE_CROSS_FILESYSTEMS")
+                .is_some_and(|v| v == "0" || v == "false"),
+            mounts: Default::default(),
+            entered_mounts: HashSet::new(),
+            volumes: None,
             screenshot: screenshot.map(|p| (p, 4)),
             quit_after_screenshot: false,
             rebuild_delay: Duration::from_millis(
@@ -377,6 +390,7 @@ impl OxTreeApp {
         if let Some(s) = self.scan.take() {
             s.cancel();
         }
+        self.mounts = oxtree_native::mounts::MountTable::load();
         self.progress = (0, 0, 0);
         self.last_elapsed = None;
         self.scan_started = Instant::now();
@@ -386,11 +400,7 @@ impl OxTreeApp {
             ScanOptions {
                 threads: self.threads,
                 cross_filesystems: self.cross_filesystems,
-                mounts: if self.cross_filesystems {
-                    oxtree_native::mounts::MountTable::load()
-                } else {
-                    Default::default()
-                },
+                mounts: self.mounts.clone(),
                 ..Default::default()
             },
         ));
@@ -449,6 +459,15 @@ impl OxTreeApp {
                 self.selected = Some(root);
                 self.treemap_root = root;
                 self.treemap = TreemapState::default();
+            }
+        }
+        self.entered_mounts.clear();
+        for m in &self.mounts.mounts {
+            let p = m.path.to_string_lossy();
+            if let Some(n) = tree.find(&p) {
+                if n != root && tree.kind(n) == Kind::Dir {
+                    self.entered_mounts.insert(n);
+                }
             }
         }
         self.subtree_errors.clear();
@@ -1095,6 +1114,12 @@ impl OxTreeApp {
     pub fn go_to_toplevel(&mut self) {
         if self.tree.is_some() {
             self.select(0, true);
+        }
+    }
+
+    pub fn load_volumes(&mut self) {
+        if self.volumes.is_none() {
+            self.volumes = Some(oxtree_native::mounts::volumes());
         }
     }
 

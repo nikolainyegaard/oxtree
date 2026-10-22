@@ -84,6 +84,60 @@ impl MountTable {
     }
 }
 
+/// A mounted local filesystem with its sizes, for the Open Directory list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Volume {
+    pub mount: Mount,
+    pub size: u64,
+    pub used: u64,
+    pub avail: u64,
+}
+
+/// Every readable local filesystem with the sizes `df` reports, sorted by
+/// mount path. `df` runs as a child process; without it the list is empty
+/// and the dialog still has its text field.
+pub fn volumes() -> Vec<Volume> {
+    let table = MountTable::load();
+    let out = std::process::Command::new("df")
+        .args(["-B1", "--output=target,fstype,size,used,avail"])
+        .stdin(std::process::Stdio::null())
+        .output();
+    let text = match out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).into_owned(),
+        _ => return Vec::new(),
+    };
+    let mut volumes = parse_df(&text, &table);
+    volumes.sort_by(|a, b| a.mount.path.cmp(&b.mount.path));
+    volumes
+}
+
+/// `df` output: a header, then `target fstype size used avail` per line.
+/// The target may contain spaces, so the four numbers are taken from the
+/// right.
+fn parse_df(text: &str, table: &MountTable) -> Vec<Volume> {
+    text.lines()
+        .skip(1)
+        .filter_map(|line| {
+            let mut fields = line.rsplitn(5, ' ').filter(|f| !f.is_empty());
+            let avail: u64 = fields.next()?.parse().ok()?;
+            let used: u64 = fields.next()?.parse().ok()?;
+            let size: u64 = fields.next()?.parse().ok()?;
+            let _fstype = fields.next()?;
+            let target = fields.next()?.trim();
+            let mount = table.at(Path::new(target))?.clone();
+            if !mount.is_readable_storage() || size == 0 {
+                return None;
+            }
+            Some(Volume {
+                mount,
+                size,
+                used,
+                avail,
+            })
+        })
+        .collect()
+}
+
 fn unescape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
@@ -138,6 +192,25 @@ systemd-1 /proc/sys/fs/binfmt_misc autofs rw 0 0
         assert!(!t.should_enter(Path::new("/proc/sys/fs/binfmt_misc")));
         assert!(t.should_enter(Path::new("/run/media/me/My Stick")));
         assert!(t.should_enter(Path::new("/home/me/subvolume-without-entry")));
+    }
+
+    #[test]
+    fn df_lines_join_the_mount_table() {
+        let t = MountTable::parse(SAMPLE);
+        let df = "Mounted on Type 1B-blocks Used Avail\n\
+/ btrfs 1000 400 600\n\
+/run tmpfs 100 1 99\n\
+/home btrfs 1000 400 600\n\
+/mnt/nas nfs4 5000 1 4999\n\
+/run/media/me/My Stick exfat 64 32 32\n";
+        let v = parse_df(df, &t);
+        let paths: Vec<String> = v
+            .iter()
+            .map(|v| v.mount.path.display().to_string())
+            .collect();
+        assert_eq!(paths, vec!["/", "/home", "/run/media/me/My Stick"]);
+        assert_eq!(v[0].used, 400);
+        assert_eq!(v[2].size, 64);
     }
 
     #[test]

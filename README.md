@@ -26,7 +26,7 @@ oxtree --cache ~/root.cache.gz
 oxtree
 ```
 
-Without arguments a dialog asks for the directory. The Browse button uses `kdialog` or `zenity` when one is installed.
+Without arguments a dialog asks for the directory. It lists every mounted local filesystem with its size, used and free space and a Scan button, and the Browse button uses `kdialog` or `zenity` when one is installed. A scan crosses into other local filesystems by default, so a scan of `/` covers the machine; kernel tables, network mounts and removable media under `/run` stay out. The checkbox in the dialog turns crossing off, which is the view to use when the question is which filesystem is full.
 
 | Key | Action |
 |-----|--------|

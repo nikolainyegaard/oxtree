@@ -41,11 +41,12 @@ The tree is the central panel, the treemap a resizable bottom panel (F9 hides it
 | Unreadable directory text | `#ff0000` | `DirReadErrColor` |
 | Directory with an unreadable directory below it | `#ffff00` | `SubtreeReadErrColor` (dark theme value) |
 | Row text | egui's strong text colour | egui's plain label colour is a mid grey meant for captions; rows are the content |
+| Entered mount point | folder icon with a small disk badge | a directory the scan crossed into; the details panel names the filesystem and device |
 | Tree icons | painted folder `#e99a2e`, page `#d8d8d8`, symlink arrow `#40a0ff`, disk `#a0a8b8` | the colours of QDirStat's tree-medium icon set, drawn with the painter so no image assets ship |
 | Status message timeout | 3 s | `StatusBarTimeoutMillisec` |
 | Row height | 20 | OxTree |
 
-What the tree colours mean, as in QDirStat: red name and `[Not Read]` is a directory that could not be read; a yellow name is a directory with such a directory somewhere below it; a grey name and `[Mount Point]` is another filesystem that was not entered. QDirStat also sets dominant items in bold (a child whose share is at least five times the median share of its siblings, clamped between 3% and 70%, only while sorted by size descending); OxTree does not, because the bundled font has no bold face and adding one costs more than the signal is worth. WizTree colours nothing in its tree.
+What the tree colours mean, as in QDirStat: red name and `[Not Read]` is a directory that could not be read; a yellow name is a directory with such a directory somewhere below it; a grey name and `[Mount Point]` is another filesystem that was not entered, which with crossing on, the default, means a kernel table or a network mount. QDirStat also sets dominant items in bold (a child whose share is at least five times the median share of its siblings, clamped between 3% and 70%, only while sorted by size descending); OxTree does not, because the bundled font has no bold face and adding one costs more than the signal is worth. WizTree colours nothing in its tree.
 
 Category colours live in `crates/core/src/mime.rs` with the table: Junk red, Compressed Archives green, Uncompressed Archives olive, Compressed Files green, Images cyan, Uncompressed Images red, Videos `#a0ff00`, Music yellow, Documents blue, Source Files cyan, Object or Generated Files `#ffa000`, Libraries `#ffa000`, Executables magenta, Symbolic Links blue.
 
@@ -76,7 +77,7 @@ Details panel labels: Total Size, Items, Files, Subdirs, Size, Allocated, Last M
 | File View | Flat list, largest first; Show cap and Folders toggle in the tab strip; click selects, double click or Enter jumps to the item in the tree |
 | Search | Box in the File View strip, Ctrl+F focuses it; WizTree syntax (`*.mp3`, `>100m`, `<2024/01/01`, `=folder`, `/regex`, `\|` for OR, `!` for NOT); Name or Path radio; the first substring match is highlighted; a bad query shows its error in red under the strip |
 | Select | Click a row or a tile |
-| Reveal | A treemap click or a File View jump opens the path to the item temporarily; the next reveal closes the temporary rows that are not on its own path, so the tree does not fill up. Rows opened by hand in the tree stay open, and opening something by hand inside a revealed path makes that path permanent |
+| Reveal | QDirStat instead collapses everything on every treemap click and opens only the clicked path; considered and not taken, since it discards what the user opened by hand. A treemap click or a File View jump opens the path to the item temporarily; the next reveal closes the temporary rows that are not on its own path, so the tree does not fill up. Rows opened by hand in the tree stay open, and opening something by hand inside a revealed path makes that path permanent |
 | Context menu | Right-click a row or a tile: copy path, trash, cleanups, treemap zoom, up one level |
 | Expand or collapse | Click the arrow, double click the row, Right and Left arrow keys, Enter |
 | Move selection | Up, Down, Home, End |

@@ -237,6 +237,7 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
                 &painter,
                 Pos2::new(icon_x + theme::ICON_SIZE / 2.0, y),
                 kind,
+                app.entered_mounts.contains(&row.node),
             );
             let name_x = icon_x + theme::ICON_SIZE + 5.0;
             let name_clip = Rect::from_min_max(
@@ -431,7 +432,7 @@ fn triangle(painter: &egui::Painter, center: Pos2, r: f32, dir: Dir, color: Colo
 /// icons: an orange folder, a white page, a page with an arrow for a
 /// symlink, a disk for a mount point, a red-edged folder for one that could
 /// not be read, a lighter folder for the `<Files>` entry.
-pub fn icon(painter: &egui::Painter, center: Pos2, kind: Kind) {
+pub fn icon(painter: &egui::Painter, center: Pos2, kind: Kind, entered_mount: bool) {
     let s = theme::ICON_SIZE;
     let r = Rect::from_center_size(center, Vec2::new(s, s * 0.8));
     match kind {
@@ -454,6 +455,20 @@ pub fn icon(painter: &egui::Painter, center: Pos2, kind: Kind) {
                     1.5,
                     Stroke::new(1.5, theme::DIR_READ_ERROR),
                     egui::StrokeKind::Inside,
+                );
+            }
+            if entered_mount {
+                // A small disk on the folder: another filesystem, read.
+                let badge = Rect::from_min_max(
+                    Pos2::new(r.max.x - s * 0.55, r.max.y - s * 0.3),
+                    Pos2::new(r.max.x + 1.0, r.max.y + 1.0),
+                );
+                painter.rect_filled(badge, 1.0, theme::ICON_MOUNT);
+                painter.rect_stroke(
+                    badge,
+                    1.0,
+                    Stroke::new(1.0, Color32::from_gray(0x30)),
+                    egui::StrokeKind::Outside,
                 );
             }
         }

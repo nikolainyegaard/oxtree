@@ -332,7 +332,7 @@ fn bench(path: PathBuf) {
 /// of / can be timed with and without crossing filesystems.
 fn bench_scan_options() -> oxtree_native::ScanOptions {
     let cross =
-        std::env::var_os("OXTREE_CROSS_FILESYSTEMS").is_some_and(|v| v == "1" || v == "true");
+        !std::env::var_os("OXTREE_CROSS_FILESYSTEMS").is_some_and(|v| v == "0" || v == "false");
     oxtree_native::ScanOptions {
         cross_filesystems: cross,
         mounts: if cross {
