@@ -10,10 +10,28 @@ use std::time::Instant;
 use eframe::egui;
 use oxtree_ui::OxTreeApp;
 
+#[cfg(feature = "diagnostics")]
+mod diagnostics;
+
+/// Without the feature the diagnostics are not compiled at all; these stubs
+/// keep the frame loop free of conditionals.
+#[cfg(not(feature = "diagnostics"))]
+mod diagnostics {
+    pub fn startup_mark(_label: &str) {}
+    pub fn install_logger() {}
+    pub fn configure(_app: &mut oxtree_ui::OxTreeApp, screenshot: Option<std::path::PathBuf>) {
+        if screenshot.is_some() {
+            eprintln!("--screenshot needs a build with --features diagnostics");
+        }
+    }
+    pub fn screenshot_step(_app: &mut oxtree_ui::OxTreeApp, _ctx: &eframe::egui::Context) {}
+}
+
+use diagnostics::{screenshot_step, startup_mark};
+
 struct Args {
     path: Option<PathBuf>,
     cache: Option<PathBuf>,
-    bench: bool,
     screenshot: Option<PathBuf>,
     files_view: bool,
     search: Option<String>,
@@ -24,7 +42,6 @@ fn parse_args() -> Args {
     let mut args = Args {
         path: None,
         cache: None,
-        bench: false,
         screenshot: None,
         files_view: false,
         search: None,
@@ -33,7 +50,6 @@ fn parse_args() -> Args {
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
-            "--bench" => args.bench = true,
             "--cache" => args.cache = it.next().map(PathBuf::from),
             "--screenshot" => args.screenshot = it.next().map(PathBuf::from),
             "--files" => args.files_view = true,
@@ -46,131 +62,12 @@ fn parse_args() -> Args {
     args
 }
 
-/// `OXTREE_STARTUP` prints where the time before the first frame goes:
-/// `1` the stages only, about ten lines; `2` the stages plus every log
-/// record from eframe, winit, glutin and the Wayland client that followed
-/// a gap of a quarter millisecond or more; a file path, everything, written
-/// to that file. `OXTREE_T0` may carry the launching shell's epoch
-/// nanoseconds so the exec and loader stage is measured too.
-struct Startup {
-    last: std::sync::Mutex<Option<Instant>>,
-    sink: std::sync::Mutex<Option<std::fs::File>>,
-    /// 0 off, 1 stages, 2 stages and slow records, 3 everything.
-    level: u8,
-}
-
-static STARTUP: std::sync::OnceLock<Startup> = std::sync::OnceLock::new();
-
-fn startup() -> &'static Startup {
-    STARTUP.get_or_init(|| {
-        let value = std::env::var("OXTREE_STARTUP").unwrap_or_default();
-        let (level, sink) = match value.as_str() {
-            "" => (0, None),
-            "1" => (1, None),
-            "2" => (2, None),
-            path if path.starts_with('/') => (3, std::fs::File::create(path).ok()),
-            _ => (3, None),
-        };
-        Startup {
-            last: std::sync::Mutex::new(None),
-            sink: std::sync::Mutex::new(sink),
-            level,
-        }
-    })
-}
-
-impl Startup {
-    /// Milliseconds since the previous line, and the line itself.
-    fn emit(&self, since: Option<f64>, text: &str) {
-        let line = match since {
-            Some(ms) => format!("startup  +{ms:7.2} ms  {text}"),
-            None => format!("startup           {text}"),
-        };
-        let mut sink = self.sink.lock().unwrap_or_else(|e| e.into_inner());
-        match sink.as_mut() {
-            Some(f) => {
-                let _ = writeln!(f, "{line}");
-            }
-            None => eprintln!("{line}"),
-        }
-    }
-
-    fn since_last(&self) -> Option<f64> {
-        let now = Instant::now();
-        let mut last = self.last.lock().unwrap_or_else(|e| e.into_inner());
-        let since = last.map(|l| (now - l).as_secs_f64() * 1000.0);
-        *last = Some(now);
-        since
-    }
-}
-
-fn startup_mark(label: &str) {
-    let st = startup();
-    if st.level == 0 {
-        return;
-    }
-    let since = st.since_last();
-    if since.is_some() {
-        st.emit(since, label);
-        return;
-    }
-    let from_shell = std::env::var("OXTREE_T0")
-        .ok()
-        .and_then(|t| t.parse::<u128>().ok())
-        .and_then(|t0| {
-            let now_ns = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .ok()?
-                .as_nanos();
-            Some((now_ns.saturating_sub(t0)) as f64 / 1e6)
-        });
-    match from_shell {
-        Some(ms) => st.emit(Some(ms), &format!("{label} (from the shell's exec)")),
-        None => st.emit(None, label),
-    }
-}
-
-struct StartupLogger;
-
-impl log::Log for StartupLogger {
-    fn enabled(&self, _: &log::Metadata) -> bool {
-        startup().level >= 2
-    }
-    fn log(&self, record: &log::Record) {
-        let st = startup();
-        if st.level < 2 {
-            return;
-        }
-        let since = st.since_last().unwrap_or(0.0);
-        if st.level == 2 && since < 0.25 {
-            return;
-        }
-        st.emit(
-            Some(since),
-            &format!("  [{}] {}", record.target(), record.args()),
-        );
-    }
-    fn flush(&self) {}
-}
-
-static STARTUP_LOGGER: StartupLogger = StartupLogger;
-
 fn main() {
     startup_mark("main entered: exec, dynamic loader, static init");
-    if startup().level >= 2 {
-        let _ = log::set_logger(&STARTUP_LOGGER);
-        log::set_max_level(log::LevelFilter::Trace);
-    }
+    diagnostics::install_logger();
     let args = parse_args();
     if args.help {
-        out(
-            "usage: oxtree [DIRECTORY] [--cache FILE] [--files] [--search QUERY] [--bench] [--screenshot FILE.ppm]"
-                .to_string(),
-        );
-        return;
-    }
-    if args.bench {
-        bench(args.path.unwrap_or_else(|| PathBuf::from("/usr")));
+        out("usage: oxtree [DIRECTORY] [--cache FILE] [--files] [--search QUERY]".to_string());
         return;
     }
     let started = Instant::now();
@@ -180,7 +77,7 @@ fn main() {
     } else {
         None
     });
-    startup_mark("scan started on its threads, config and date +%z on another");
+    startup_mark("config and date +%z started on a thread");
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(if oxtree_native::root::is_root() {
@@ -200,8 +97,9 @@ fn main() {
             startup_mark("window, GL context and egui ready (winit, Wayland, glutin, Mesa)");
             Ok(Box::new(Shell {
                 app: {
-                    let mut app = OxTreeApp::new(early, args.cache, args.screenshot);
+                    let mut app = OxTreeApp::new(early, args.cache);
                     app.attach_context(&cc.egui_ctx);
+                    diagnostics::configure(&mut app, args.screenshot);
                     startup_mark("OxTreeApp::new: joined the config thread, categories");
                     if args.files_view {
                         app.view = oxtree_ui::app::View::Files;
@@ -312,183 +210,7 @@ impl eframe::App for Shell {
     }
 }
 
-/// Wait for the tree and the treemap texture, then a few frames, then ask
-/// for a screenshot; write it as PPM and close.
-fn screenshot_step(app: &mut OxTreeApp, ctx: &egui::Context) {
-    let Some((path, countdown)) = app.screenshot.clone() else {
-        return;
-    };
-    let ready = app.tree.is_some() && app.treemap.texture.is_some() && app.treemap.job.is_none();
-    if !ready {
-        ctx.request_repaint_after(std::time::Duration::from_millis(50));
-        return;
-    }
-    if countdown > 0 {
-        app.screenshot = Some((path, countdown - 1));
-        ctx.request_repaint();
-        return;
-    }
-    if app.quit_after_screenshot {
-        return;
-    }
-    app.quit_after_screenshot = true;
-    // The capture runs after this frame is painted; the callback writes the
-    // file and closes the window.
-    let ctx2 = ctx.clone();
-    ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(
-        egui::ScreenshotCallback::new(move |img| {
-            let [w, h] = img.size;
-            let min_alpha = img.pixels.iter().map(|p| p.a()).min().unwrap_or(0);
-            let translucent = img.pixels.iter().filter(|p| p.a() < 255).count();
-            eprintln!(
-                "screenshot alpha: min {min_alpha}, {translucent} of {} pixels below 255",
-                img.pixels.len()
-            );
-            let mut ppm = format!("P6\n{w} {h}\n255\n").into_bytes();
-            for px in &img.pixels {
-                ppm.extend_from_slice(&[px.r(), px.g(), px.b()]);
-            }
-            match std::fs::write(&path, ppm) {
-                Ok(()) => eprintln!("screenshot written to {}", path.display()),
-                Err(e) => eprintln!("screenshot failed: {e}"),
-            }
-            ctx2.send_viewport_cmd(egui::ViewportCommand::Close);
-        }),
-    ));
-}
-
 /// Print without panicking when stdout is a closed pipe.
 fn out(line: String) {
     let _ = writeln!(std::io::stdout(), "{line}");
-}
-
-fn bench(path: PathBuf) {
-    let t0 = Instant::now();
-    let (tree, scan_elapsed) =
-        match oxtree_native::walker::scan_blocking(&path, bench_scan_options()) {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("{e}");
-                std::process::exit(1);
-            }
-        };
-    let _ = t0;
-    out(format!(
-        "scan     {:>8.1} ms  {} nodes, {}",
-        scan_elapsed.as_secs_f64() * 1000.0,
-        tree.len(),
-        oxtree_core::format::size(tree.size(0))
-    ));
-    let categorizer = oxtree_core::mime::Categorizer::with_defaults();
-    let threads = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(4)
-        .min(16);
-    for (w, h) in [(1900usize, 600usize), (1893, 597)] {
-        let t1 = Instant::now();
-        let tiles = oxtree_core::layout::layout(
-            &tree,
-            0,
-            oxtree_core::layout::Rect::new(0.0, 0.0, w as f64, h as f64),
-            3.0,
-        );
-        let t2 = Instant::now();
-        let color_of = |n: u32| {
-            categorizer
-                .category(tree.name(n), tree.kind(n), tree.mode(n))
-                .map(|c| c.color)
-                .unwrap_or([0xde, 0x8d, 0x53])
-        };
-        let px = oxtree_core::cushion::render(
-            &tree,
-            &tiles,
-            w,
-            h,
-            &color_of,
-            Default::default(),
-            threads,
-        );
-        let t3 = Instant::now();
-        out(format!(
-            "layout   {:>8.1} ms  {} tiles at {w}x{h}",
-            (t2 - t1).as_secs_f64() * 1000.0,
-            tiles.len()
-        ));
-        out(format!(
-            "render   {:>8.1} ms  {} threads",
-            (t3 - t2).as_secs_f64() * 1000.0,
-            threads
-        ));
-        if w == 1900 {
-            let mut ppm = format!("P6\n{w} {h}\n255\n").into_bytes();
-            for p in px.as_chunks::<4>().0 {
-                ppm.extend_from_slice(&p[..3]);
-            }
-            let _ = std::fs::write("treemap.ppm", ppm);
-        }
-    }
-    let t4 = Instant::now();
-    let text = oxtree_core::cache::write(&tree);
-    let t5 = Instant::now();
-    let back = oxtree_core::cache::parse(&text).and_then(|(r, d)| oxtree_core::Tree::build(r, d));
-    let t6 = Instant::now();
-    out(format!(
-        "cache    {:>8.1} ms write, {:>8.1} ms parse, {} bytes, ok={}",
-        (t5 - t4).as_secs_f64() * 1000.0,
-        (t6 - t5).as_secs_f64() * 1000.0,
-        text.len(),
-        back.is_ok()
-    ));
-    // Search: a name query, then the same query against whole paths, which
-    // builds a path string per node.
-    for (label, match_path) in [("name", false), ("path", true)] {
-        let q = oxtree_core::query::Query::parse("lib >1k", 0, 0).unwrap_or_default();
-        let needs_path = q.needs_path(match_path);
-        let t = Instant::now();
-        let hits = oxtree_core::flat::flat_list_filtered(
-            &tree,
-            false,
-            oxtree_core::flat::FlatSort::Size,
-            false,
-            0,
-            |n| {
-                let path = if needs_path {
-                    tree.path(n)
-                } else {
-                    String::new()
-                };
-                q.matches(
-                    &oxtree_core::query::Item {
-                        name: tree.name(n),
-                        path: &path,
-                        size: tree.size(n),
-                        mtime: tree.mtime(n),
-                        is_dir: tree.is_dir_like(n),
-                    },
-                    match_path,
-                )
-            },
-        )
-        .len();
-        out(format!(
-            "search   {:>8.1} ms  \"lib >1k\" by {label}, {hits} hits",
-            t.elapsed().as_secs_f64() * 1000.0
-        ));
-    }
-}
-
-/// The benchmark honours the same environment switch as the app, so a scan
-/// of / can be timed with and without crossing filesystems.
-fn bench_scan_options() -> oxtree_native::ScanOptions {
-    let cross =
-        !std::env::var_os("OXTREE_CROSS_FILESYSTEMS").is_some_and(|v| v == "0" || v == "false");
-    oxtree_native::ScanOptions {
-        cross_filesystems: cross,
-        mounts: if cross {
-            oxtree_native::mounts::MountTable::load()
-        } else {
-            Default::default()
-        },
-        ..Default::default()
-    }
 }

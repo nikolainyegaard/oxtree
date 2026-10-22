@@ -9,7 +9,7 @@ Checked in the change checklist. A change that moves one says so in the commit b
 | Measure | Budget | 0.1.0 | How to measure |
 |---------|--------|-------|----------------|
 | Stripped release binary | 10 MB | 8.4 MB | `ls -l target/release/oxtree` |
-| Scan of /usr, 352k nodes, warm, on mains | 150 ms | 125 ms (250 ms on battery with the powersave governor) | `target/release/oxtree --bench /usr` |
+| Scan of /usr, 352k nodes, warm, on mains | 150 ms | 125 ms (250 ms on battery with the powersave governor) | `target/release/oxtree-bench /usr` from a `--features diagnostics` build |
 | Treemap layout plus render at 1900x600 | 15 ms | 1.7 + 7.7 ms | same |
 | First frame, performance power profile | 50 ms | 34 ms (86 to 90 ms in the balanced profile on battery) | `target/release/oxtree /usr 2>&1 \| grep 'first frame'`; stages with `OXTREE_STARTUP=1`; check `/sys/firmware/acpi/platform_profile` first |
 | RSS with /usr loaded and the window open | 120 MB | 133 MB (115 MB with `MALLOC_ARENA_MAX=2`) | `grep -E '^(Rss\|Pss\|Anonymous)' /proc/$(pgrep -n -x oxtree)/smaps_rollup` |
@@ -101,7 +101,7 @@ What was shaved, and what the measurements said:
    | before the window | 7 | 97 to 120 ms | 310 to 335 ms |
    | before the window | 4 | 96 to 122 ms | 416 to 424 ms |
 
-   The tree arrives about 90 ms earlier and the empty window about 40 ms later, and on a home directory scan the user's own log showed the EGL init stretched from 39 to 65 ms beside the walk. The window comes first; `OXTREE_EARLY_SCAN=1` starts the scan before it and `OXTREE_THREADS=N` sets the worker count, both for measuring.
+   The tree arrives about 90 ms earlier and the empty window about 40 ms later, and on a home directory scan the user's own log showed the EGL init stretched from 39 to 65 ms beside the walk. The window comes first. The early start and the thread-count switch used for this table were removed once it was settled; `begin_early` in `app.rs` is where an early scan would go if the question is ever reopened.
 2. **The scan threads wake the UI.** Done. Every scan event calls back into egui's `request_repaint`, so a finished scan is drawn on the next frame instead of on the next 100 ms poll. Same for later rescans.
 3. **`date +%z` and the cleanups file run on a thread started at `main` entry.** Done. The constructor's own cost went from 2 to 3 ms to 0.1 to 0.2 ms.
 4. **Load Mesa on a thread at `main` entry.** Not done. A `dlopen` of libEGL_mesa while winit talks to the compositor; glutin then finds it mapped. Expected 15 to 25 ms off the first frame, less now that the scan competes for the cores during setup. Needs the `libloading` crate since the workspace forbids `unsafe`.
@@ -113,18 +113,17 @@ The release profile is `lto = "fat"`, `codegen-units = 1`, `panic = "abort"`, `s
 
 ## Diagnostic switches
 
-Environment variables and flags read at startup, for measuring and for bisecting problems. None of them is a user setting.
+Environment variables and flags read at startup, for measuring and for bisecting problems. None of them is a user setting, and apart from `OXTREE_REBUILD_DELAY_MS` none of them exists in a plain release build: they are compiled in with `cargo build --release --features diagnostics`, which also builds the `oxtree-bench` binary. A plain build answers `--screenshot` with one line saying it needs that feature.
 
 | Switch | Effect |
 |--------|--------|
 | `OXTREE_STATS=1` | Prints treemap rebuild counts and process CPU time once a second to stderr |
 | `OXTREE_REBUILD_DELAY_MS=200` | Waits for the treemap size to settle before rebuilding (QDirStat's behaviour); default 0 |
-| `OXTREE_EARLY_SCAN=1` | Starts the scan at `main` entry, before the window, instead of from the constructor after it |
-| `OXTREE_THREADS=N` | Scan worker threads; default one per core, capped at 16 |
 | `OXTREE_STARTUP=1` | Prints the startup stages, about ten lines, each with the time since the previous one; `OXTREE_T0=$(date +%s%N)` on the same command line adds the exec and loader time |
 | `OXTREE_STARTUP=2` | The stages plus every log record from eframe, winit, glutin and the Wayland client that followed a gap of a quarter millisecond or more |
 | `OXTREE_STARTUP=/path/to/file` | Everything, some 2 500 lines, written to that file instead of the terminal |
 | `--screenshot FILE.ppm` | Writes the first full frame and prints its minimum alpha and translucent pixel count to stderr; must say `min 255` |
+| `oxtree-bench PATH` | Scan, layout, render, cache and search timings for one tree, to stdout |
 
 ## Dead ends
 

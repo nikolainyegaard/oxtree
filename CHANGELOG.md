@@ -8,7 +8,7 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- `OXTREE_STARTUP=1` prints where the time before the first frame goes; `OXTREE_EARLY_SCAN=1` and `OXTREE_THREADS=N` for measuring
+- A `diagnostics` Cargo feature, off in release builds, holds the development tools: `OXTREE_STARTUP` startup timing, `OXTREE_STATS`, `--screenshot`, and the benchmark as its own `oxtree-bench` binary
 
 - File, Rescan as Root: OxTree running as root through polkit replaces the window on the same directory, for the directories the user cannot read; the title shows [root], configuration is read from the user and never written; a polkit action file in `packaging/`
 - A scan crosses into other local filesystems by default; kernel tables and network mounts stay out. The Open Directory dialog has the checkbox, lists every mounted local filesystem with size, used and free, and scans one with a click. Entered mount points keep a disk badge on their folder icon and the details panel names the filesystem

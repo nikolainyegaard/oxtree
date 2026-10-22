@@ -54,9 +54,12 @@ Cache files are QDirStat's format, so a scan written on a server with `qdirstat-
 
 ```
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
-target/release/oxtree --bench /usr
+cargo build --release --features diagnostics
+target/release/oxtree-bench /usr
 target/release/oxtree /usr --screenshot shot.ppm
 ```
+
+The `diagnostics` feature adds the benchmark binary, the screenshot mode and the `OXTREE_STARTUP` and `OXTREE_STATS` switches. A plain release build has none of them.
 
 The workspace forbids `unsafe` and denies `unwrap`, `expect`, `panic` and indexing outside tests. Reference documentation is in [docs/](docs/): [architecture](docs/architecture.md), [design](docs/design.md), [performance](docs/performance.md), [cleanups](docs/cleanups.md), [gotchas](docs/gotchas.md).
 

@@ -217,7 +217,9 @@ pub struct OxTreeApp {
     /// Loaded when the Open Directory dialog opens, dropped when it closes.
     pub volumes: Option<Vec<oxtree_native::mounts::Volume>>,
 
+    #[cfg(feature = "diagnostics")]
     pub screenshot: Option<(PathBuf, u32)>,
+    #[cfg(feature = "diagnostics")]
     pub quit_after_screenshot: bool,
 
     /// How long the treemap size has to hold still before a rebuild. Zero,
@@ -226,9 +228,11 @@ pub struct OxTreeApp {
     /// waits 200 ms; `OXTREE_REBUILD_DELAY_MS` sets that here.
     pub rebuild_delay: Duration,
     /// `OXTREE_STATS=1` prints rebuild counts and process CPU time once a second.
+    #[cfg(feature = "diagnostics")]
     pub stats: Option<Stats>,
 }
 
+#[cfg(feature = "diagnostics")]
 pub struct Stats {
     pub window_start: Instant,
     pub cpu_ms_at_start: u64,
@@ -237,6 +241,7 @@ pub struct Stats {
 
 /// User plus system CPU time of this process in milliseconds, from
 /// /proc/self/stat. Assumes the usual 100 clock ticks per second.
+#[cfg(feature = "diagnostics")]
 pub fn process_cpu_ms() -> Option<u64> {
     let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
     let after_comm = stat.rsplit_once(')')?.1;
@@ -246,15 +251,12 @@ pub fn process_cpu_ms() -> Option<u64> {
     Some((utime + stime) * 10)
 }
 
-/// Work that starts at `main` entry, before the window, so it overlaps the
-/// 85 ms of window setup: the scan itself, which runs on its own threads,
-/// and the small reads (cleanups file, `date +%z`) on one more thread.
+/// Work that starts at `main` entry, before the window: the small reads
+/// (cleanups file, `date +%z`) on a thread, and the mount table. The scan
+/// itself waits for the window; started earlier it slows the window setup
+/// on every core and the window appears later, see performance.md.
 pub struct EarlyWork {
-    scan: Option<(PathBuf, ScanHandle, Instant)>,
-    wake: Wake,
-    /// The default: start from the constructor, after the window.
-    /// `OXTREE_EARLY_SCAN=1` starts the scan here instead, before it.
-    late_start: Option<PathBuf>,
+    start: Option<PathBuf>,
     mounts: oxtree_native::mounts::MountTable,
     cross_filesystems: bool,
     threads: usize,
@@ -264,16 +266,10 @@ pub struct EarlyWork {
 /// Defaults for a scan from the environment; the settings file will own
 /// these.
 fn scan_defaults() -> (usize, bool) {
-    let threads = std::env::var("OXTREE_THREADS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .filter(|&n| n > 0)
-        .unwrap_or_else(|| {
-            std::thread::available_parallelism()
-                .map(|n| n.get())
-                .unwrap_or(4)
-                .min(16)
-        });
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .min(16);
     // On by default: a scan of / should show the machine, as du and ncdu
     // do. Kernel tables and network mounts stay out either way.
     let cross =
@@ -284,41 +280,12 @@ fn scan_defaults() -> (usize, bool) {
 pub fn begin_early(start: Option<PathBuf>) -> EarlyWork {
     let (threads, cross_filesystems) = scan_defaults();
     let mounts = oxtree_native::mounts::MountTable::load();
-    // Off by default: the walk saturates every core and the window setup
-    // slows down beside it, so the window would appear later. Numbers in
-    // performance.md.
-    let early_scan = std::env::var_os("OXTREE_EARLY_SCAN").is_some_and(|v| v == "1");
-    let wake = Wake::default();
-    let mut late_start = None;
-    let scan = start.filter(|p| {
-        if early_scan {
-            true
-        } else {
-            late_start = Some(p.clone());
-            false
-        }
-    });
-    let scan = scan.map(|path| {
-        let handle = oxtree_native::scan(
-            &path,
-            ScanOptions {
-                threads,
-                cross_filesystems,
-                mounts: mounts.clone(),
-                ..Default::default()
-            },
-            wake.clone(),
-        );
-        (path, handle, Instant::now())
-    });
     let config = std::thread::spawn(|| {
         let (cleanups, note) = oxtree_native::config::load_cleanups();
         (cleanups, note, oxtree_native::localtime::utc_offset_secs())
     });
     EarlyWork {
-        scan,
-        wake,
-        late_start,
+        start,
         mounts,
         cross_filesystems,
         threads,
@@ -327,11 +294,9 @@ pub fn begin_early(start: Option<PathBuf>) -> EarlyWork {
 }
 
 impl OxTreeApp {
-    pub fn new(early: EarlyWork, cache: Option<PathBuf>, screenshot: Option<PathBuf>) -> OxTreeApp {
+    pub fn new(early: EarlyWork, cache: Option<PathBuf>) -> OxTreeApp {
         let EarlyWork {
-            scan,
-            wake,
-            late_start,
+            start,
             mounts,
             cross_filesystems,
             threads,
@@ -386,11 +351,13 @@ impl OxTreeApp {
             shading: Shading::default(),
             threads,
             cross_filesystems,
-            wake,
+            wake: Wake::default(),
             mounts,
             entered_mounts: HashSet::new(),
             volumes: None,
-            screenshot: screenshot.map(|p| (p, 4)),
+            #[cfg(feature = "diagnostics")]
+            screenshot: None,
+            #[cfg(feature = "diagnostics")]
             quit_after_screenshot: false,
             rebuild_delay: Duration::from_millis(
                 std::env::var("OXTREE_REBUILD_DELAY_MS")
@@ -398,6 +365,7 @@ impl OxTreeApp {
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(0),
             ),
+            #[cfg(feature = "diagnostics")]
             stats: std::env::var_os("OXTREE_STATS").map(|_| Stats {
                 window_start: Instant::now(),
                 cpu_ms_at_start: process_cpu_ms().unwrap_or(0),
@@ -408,17 +376,8 @@ impl OxTreeApp {
             app.set_status(n, false);
         }
         if let Some(c) = cache {
-            if let Some((_, handle, _)) = scan {
-                handle.cancel();
-            }
             app.read_cache(c);
-        } else if let Some((path, handle, started)) = scan {
-            // Started before the window; adopt it as start_scan would.
-            app.scan_started = started;
-            app.set_status(format!("Reading {}...", path.display()), true);
-            app.scan = Some(handle);
-            app.scan_path = Some(path);
-        } else if let Some(p) = late_start {
+        } else if let Some(p) = start {
             app.open_directory(p);
         } else {
             app.open_dir_text = Some(std::env::var("HOME").unwrap_or_else(|_| "/".into()));
@@ -695,12 +654,14 @@ impl OxTreeApp {
                     self.treemap.tiles = result.tiles;
                     self.treemap.rendered_generation = result.generation;
                     self.treemap.rebuilds += 1;
+                    #[cfg(feature = "diagnostics")]
                     if let Some(st) = &mut self.stats {
                         st.rebuilds_in_window += 1;
                     }
                 }
             }
         }
+        #[cfg(feature = "diagnostics")]
         if let Some(st) = &mut self.stats {
             let elapsed = st.window_start.elapsed();
             if elapsed >= Duration::from_secs(1) {
@@ -999,6 +960,12 @@ impl OxTreeApp {
                 self.request_file_view(ctx);
             }
         }
+    }
+
+    /// `--screenshot`: write the first full frame to this file, then quit.
+    #[cfg(feature = "diagnostics")]
+    pub fn set_screenshot(&mut self, path: PathBuf) {
+        self.screenshot = Some((path, 4));
     }
 
     /// Give the background threads a way to request a frame.

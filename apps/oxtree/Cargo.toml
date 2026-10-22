@@ -5,8 +5,18 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+# Startup timing, the screenshot mode and the oxtree-bench binary. Off in
+# the shipped build; on for development.
+diagnostics = ["dep:log", "oxtree-ui/diagnostics"]
+
+[[bin]]
+name = "oxtree-bench"
+path = "src/bin/bench.rs"
+required-features = ["diagnostics"]
+
 [dependencies]
-log = "0.4.34"
+log = { version = "0.4.34", optional = true }
 eframe.workspace = true
 oxtree-core.workspace = true
 oxtree-native.workspace = true

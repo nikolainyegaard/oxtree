@@ -3,7 +3,7 @@
 OxTree is a Cargo workspace with four layers. Dependencies point downwards only; nothing below the binary opens a window.
 
 ```
-apps/oxtree          the binary: arguments, the eframe window, --files, --search, --bench, --screenshot
+apps/oxtree          the binary: arguments, the eframe window, --files, --search; with --features diagnostics also diagnostics.rs (startup timing, --screenshot) and the oxtree-bench binary
 crates/ui            egui views, theme tokens, application state (oxtree-ui)
 crates/native        filesystem walk, child processes, config paths, cache files on disk (oxtree-native)
 crates/core          pure logic, no I/O: tree arena, layout, shading, categories, cleanups, formats (oxtree-core)
@@ -89,7 +89,7 @@ Three direct dependencies outside std:
 
 | Crate | Why |
 |-------|-----|
-| log 0.4 | The `OXTREE_STARTUP=1` logger that timestamps eframe's, winit's and glutin's own log records; the crate is already in the tree through eframe and has no dependencies. |
+| log 0.4, optional | The `OXTREE_STARTUP` logger that timestamps eframe's, winit's and glutin's own log records; only with the `diagnostics` feature. The crate is already in the tree through eframe and has no dependencies. |
 | regex-lite 0.1 | The `/regex` mode of the search box. About 150 KB with no dependencies and no Unicode classes, which file names do not need; the full `regex` crate was rejected at about 500 KB plus its tree. |
 | eframe 0.37 (glow, wayland, x11, default fonts, clipboard) | The window and the immediate-mode UI. glow is the lighter renderer; wgpu adds a shader compiler and more memory for nothing a treemap needs. The clipboard feature pulls in arboard and smithay-clipboard so Ctrl+V reads the system clipboard; without it egui only pastes what it copied itself. 0.37 paces Wayland frames by compositor callbacks instead of a blocking swap, so the app keeps running when the compositor withholds frames. |
 
