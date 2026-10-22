@@ -8,6 +8,10 @@ OxTree scans a directory on all cores, draws the result as a sortable tree with 
 
 Version 0.1.0 covers the daily use: scan, tree, treemap, details, cleanups, trash, QDirStat cache files, a File View with search, a File Types view, duplicates, CSV export, multi-selection and a Preferences dialog. Not there yet: rename, a file age view, exclude rule and category editors. Cleanups and exclude rules are edited in their configuration files.
 
+## Install
+
+Each release on the [releases page](https://github.com/nikolainyegaard/oxtree/releases) has, for x86_64 and aarch64: a tarball with the binary, a `.deb`, an `.rpm` and an AppImage. All are built against glibc 2.28, so they run on RHEL 8, Debian 10, Ubuntu 18.10 and anything newer. The packages install the desktop entry, the icon and the polkit action for Rescan as Root; the tarball and the AppImage work from anywhere, and Rescan as Root then goes through polkit's generic prompt. Only Fedora on x86_64 has been tested by the author; reports from elsewhere are welcome.
+
 ## Build
 
 Rust 1.88 or newer and a working OpenGL driver.

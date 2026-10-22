@@ -2,8 +2,10 @@
 name = "oxtree"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Where the disk space went: a directory tree and a treemap"
 
 [features]
 # Startup timing, the screenshot mode and the oxtree-bench binary. Off in
@@ -25,3 +27,37 @@ oxtree-ui.workspace = true
 
 [lints]
 workspace = true
+
+# cargo deb: the binary, the desktop entry, the icon, the AppStream
+# metainfo and the polkit action, as a distribution package would place them.
+[package.metadata.deb]
+section = "utils"
+priority = "optional"
+depends = "libc6 (>= 2.28)"
+extended-description = """OxTree scans a directory on all cores and shows the result as a sortable \
+tree with percent bars and as a cushion treemap, with a flat file view, \
+search, file types, duplicates, CSV export and cleanup actions."""
+assets = [
+    ["target/release/oxtree", "usr/bin/", "755"],
+    ["packaging/com.github.nikolainyegaard.oxtree.desktop", "usr/share/applications/", "644"],
+    ["packaging/com.github.nikolainyegaard.oxtree.svg", "usr/share/icons/hicolor/scalable/apps/", "644"],
+    ["packaging/com.github.nikolainyegaard.oxtree.metainfo.xml", "usr/share/metainfo/", "644"],
+    ["packaging/com.github.nikolainyegaard.oxtree.policy", "usr/share/polkit-1/actions/", "644"],
+    ["README.md", "usr/share/doc/oxtree/", "644"],
+    ["NOTICE", "usr/share/doc/oxtree/", "644"],
+]
+
+[package.metadata.generate-rpm]
+auto-req = "disabled"
+assets = [
+    { source = "target/release/oxtree", dest = "/usr/bin/oxtree", mode = "755" },
+    { source = "packaging/com.github.nikolainyegaard.oxtree.desktop", dest = "/usr/share/applications/com.github.nikolainyegaard.oxtree.desktop", mode = "644" },
+    { source = "packaging/com.github.nikolainyegaard.oxtree.svg", dest = "/usr/share/icons/hicolor/scalable/apps/com.github.nikolainyegaard.oxtree.svg", mode = "644" },
+    { source = "packaging/com.github.nikolainyegaard.oxtree.metainfo.xml", dest = "/usr/share/metainfo/com.github.nikolainyegaard.oxtree.metainfo.xml", mode = "644" },
+    { source = "packaging/com.github.nikolainyegaard.oxtree.policy", dest = "/usr/share/polkit-1/actions/com.github.nikolainyegaard.oxtree.policy", mode = "644" },
+    { source = "README.md", dest = "/usr/share/doc/oxtree/README.md", mode = "644", doc = true },
+    { source = "NOTICE", dest = "/usr/share/doc/oxtree/NOTICE", mode = "644", doc = true },
+]
+
+[package.metadata.generate-rpm.requires]
+glibc = ">= 2.28"

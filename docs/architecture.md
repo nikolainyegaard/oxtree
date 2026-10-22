@@ -18,6 +18,15 @@ LICENSE                    GPL-2.0
 NOTICE                     what was carried over from QDirStat
 CHANGELOG.md
 README.md
+.github/workflows/
+  ci.yml                   the gate on every push and pull request
+  release.yml              on a version tag: x86_64 and aarch64 builds against glibc 2.28, tarball, .deb, .rpm, AppImage, the GitHub release
+packaging/
+  com.github.nikolainyegaard.oxtree.desktop     desktop entry
+  com.github.nikolainyegaard.oxtree.svg         the icon
+  com.github.nikolainyegaard.oxtree.metainfo.xml  AppStream metadata
+  com.github.nikolainyegaard.oxtree.policy      polkit action for Rescan as Root
+  oxtree-64.rgba           the window icon, raw pixels, compiled into the binary
 docs/
   architecture.md          this file
   design.md                colours, sizes, UI structure and copy

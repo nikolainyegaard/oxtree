@@ -22,3 +22,8 @@ enough to count as derived work:
 - The cache file format, versions 1.0 and 2.0, in crates/core/src/cache.rs.
 - The default colours of the treemap and the percent bars, in
   crates/ui/src/theme.rs.
+
+Bundled fonts: Ubuntu Light, Copyright 2010-2011 Canonical Ltd, under
+the Ubuntu Font Licence 1.0 (https://ubuntu.com/legal/font-licence),
+and the egui icon font, Copyright the egui authors, under the MIT or
+Apache-2.0 licence, both through the epaint_default_fonts crate.

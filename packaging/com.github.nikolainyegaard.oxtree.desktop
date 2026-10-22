@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=OxTree
+Comment=Where the disk space went: a directory tree and a treemap
+Exec=oxtree %f
+Icon=com.github.nikolainyegaard.oxtree
+Terminal=false
+Categories=System;Filesystem;
+Keywords=disk;usage;space;treemap;du;ncdu;
+MimeType=inode/directory;
+StartupWMClass=com.github.nikolainyegaard.oxtree

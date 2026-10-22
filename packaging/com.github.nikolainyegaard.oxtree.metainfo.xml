@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.github.nikolainyegaard.oxtree</id>
+  <name>OxTree</name>
+  <summary>Where the disk space went</summary>
+  <developer id="com.github.nikolainyegaard">
+    <name>Nikolai Nyegaard</name>
+  </developer>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0-only</project_license>
+  <description>
+    <p>
+      OxTree scans a directory on all cores and shows the result as a sortable
+      tree with percent bars and as a cushion treemap where every file is a
+      rectangle sized by its space and coloured by type. Click a rectangle and
+      the tree jumps to the file.
+    </p>
+    <p>
+      A File View lists every file largest first with WizTree's search syntax,
+      a File Types view groups them by extension, and a duplicates mode finds
+      files with the same name and size. Cleanup actions open a terminal or a
+      file manager there, delete junk, or run your own command; one key moves
+      things to the trash. Scans can be exported to CSV, also from the command
+      line without a window, and saved as QDirStat cache files.
+    </p>
+  </description>
+  <launchable type="desktop-id">com.github.nikolainyegaard.oxtree.desktop</launchable>
+  <provides>
+    <binary>oxtree</binary>
+  </provides>
+  <url type="homepage">https://github.com/nikolainyegaard/oxtree</url>
+  <url type="bugtracker">https://github.com/nikolainyegaard/oxtree/issues</url>
+  <url type="vcs-browser">https://github.com/nikolainyegaard/oxtree</url>
+  <content_rating type="oars-1.1"/>
+  <categories>
+    <category>System</category>
+    <category>Filesystem</category>
+  </categories>
+  <keywords>
+    <keyword>disk</keyword>
+    <keyword>usage</keyword>
+    <keyword>treemap</keyword>
+  </keywords>
+  <releases>
+    <release version="0.1.0" date="2026-10-22">
+      <url>https://github.com/nikolainyegaard/oxtree/releases/tag/v0.1.0</url>
+    </release>
+  </releases>
+</component>

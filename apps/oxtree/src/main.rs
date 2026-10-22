@@ -116,7 +116,13 @@ fn main() {
             } else {
                 "OxTree"
             })
-            .with_app_id("oxtree")
+            // The desktop file's name, so Wayland compositors find the icon.
+            .with_app_id("com.github.nikolainyegaard.oxtree")
+            .with_icon(egui::IconData {
+                rgba: include_bytes!("../../../packaging/oxtree-64.rgba").to_vec(),
+                width: 64,
+                height: 64,
+            })
             .with_inner_size([w, h])
             .with_min_inner_size([640.0, 400.0]),
         ..Default::default()

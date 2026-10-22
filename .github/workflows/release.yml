@@ -1,0 +1,95 @@
+name: release
+
+# On a version tag: build for x86_64 and aarch64 against glibc 2.28, so the
+# binaries run on RHEL 8, Debian 10, Ubuntu 18.10 and anything newer; pack
+# each as a tarball, a .deb, an .rpm and an AppImage; attach them all to a
+# GitHub release with the changelog section as its notes.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  GLIBC: "2.28"
+  APP_ID: com.github.nikolainyegaard.oxtree
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            arch: x86_64
+          - target: aarch64-unknown-linux-gnu
+            arch: aarch64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Install the packaging tools
+        run: |
+          pip install cargo-zigbuild
+          cargo install cargo-deb cargo-generate-rpm --locked
+          curl -fsSLo appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+      - name: Build
+        run: cargo zigbuild --release --target ${{ matrix.target }}.${{ env.GLIBC }}
+      - name: Version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      - name: Tarball
+        run: |
+          mkdir -p dist stage/oxtree-${VERSION}-${{ matrix.arch }}
+          cp target/${{ matrix.target }}/release/oxtree README.md LICENSE NOTICE CHANGELOG.md stage/oxtree-${VERSION}-${{ matrix.arch }}/
+          cp -r packaging stage/oxtree-${VERSION}-${{ matrix.arch }}/
+          tar -C stage -czf dist/oxtree-${VERSION}-${{ matrix.arch }}.tar.gz oxtree-${VERSION}-${{ matrix.arch }}
+      - name: Debian package
+        run: cargo deb -p oxtree --no-build --no-strip --target ${{ matrix.target }} -o dist/
+      - name: RPM package
+        run: cargo generate-rpm -p apps/oxtree --target ${{ matrix.target }} -o dist/
+      - name: AppImage
+        run: |
+          mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/scalable/apps AppDir/usr/share/metainfo AppDir/usr/share/polkit-1/actions
+          cp target/${{ matrix.target }}/release/oxtree AppDir/usr/bin/
+          cp packaging/${APP_ID}.desktop AppDir/usr/share/applications/
+          cp packaging/${APP_ID}.svg AppDir/usr/share/icons/hicolor/scalable/apps/
+          cp packaging/${APP_ID}.metainfo.xml AppDir/usr/share/metainfo/
+          cp packaging/${APP_ID}.policy AppDir/usr/share/polkit-1/actions/
+          ln -s usr/share/applications/${APP_ID}.desktop AppDir/${APP_ID}.desktop
+          ln -s usr/share/icons/hicolor/scalable/apps/${APP_ID}.svg AppDir/${APP_ID}.svg
+          ln -s usr/bin/oxtree AppDir/AppRun
+          ARCH=${{ matrix.arch }} ./appimagetool --appimage-extract-and-run AppDir dist/OxTree-${VERSION}-${{ matrix.arch }}.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.arch }}
+          path: dist/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Release notes from the changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { on = 1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          printf '\nBinaries are built against glibc %s. The aarch64 builds are untested; please report what you find.\n' "$GLIBC" >> notes.md
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file notes.md
