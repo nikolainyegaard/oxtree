@@ -20,6 +20,7 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Clicking a file in the treemap jumps to it in the tree even when its directory was collapsed; the tree rows were rebuilt a frame too late
 - Paste into text fields: the eframe clipboard feature was off, so Ctrl+V had nothing to read
 
 - Window content no longer bleeds through to the previous frame on Wayland: the frame is cleared with an opaque colour instead of eframe's 70% alpha default, which showed stale frames, ghosts and the wallpaper in the tree and treemap areas while moving the window or hiding the treemap

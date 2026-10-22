@@ -156,6 +156,12 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
         }
     }
 
+    // A treemap click earlier in this frame may have expanded ancestors;
+    // the jump below has to see the rows as they are now, not as they were
+    // when the frame started.
+    if app.rows_dirty {
+        app.rebuild_rows();
+    }
     let total = app.rows.len();
     let selected = app.selected;
     let scroll_to = if app.scroll_to_selected {
