@@ -186,7 +186,7 @@ pub struct OxTreeApp {
     pub output: Option<OutputWindow>,
     pub trash_job: Option<Receiver<Result<String, String>>>,
     /// A second instance started as root through pkexec; reports when it ends.
-    pub root_launch: Option<Receiver<oxtree_native::root::LaunchResult>>,
+    pub root_launch: Option<oxtree_native::root::Launch>,
     pub is_root: bool,
 
     pub open_dir_text: Option<String>,
@@ -555,19 +555,24 @@ impl OxTreeApp {
 
         self.pump_file_view(ctx);
 
-        if let Some(rx) = &self.root_launch {
-            match rx.try_recv() {
-                Ok(Ok(_)) => {
-                    self.root_launch = None;
-                    self.set_status("The root instance closed.", false);
-                }
-                Ok(Err(e)) => {
-                    self.root_launch = None;
-                    self.show_error(e);
-                }
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.root_launch = None,
-                Err(std::sync::mpsc::TryRecvError::Empty) => {
-                    ctx.request_repaint_after(Duration::from_millis(500));
+        if let Some(launch) = &self.root_launch {
+            if launch.is_ready() {
+                // The root window is up: this one hands over and closes.
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            } else {
+                match launch.exit.try_recv() {
+                    Ok(Ok(_)) => {
+                        self.root_launch = None;
+                        self.set_status("The root instance closed.", false);
+                    }
+                    Ok(Err(e)) => {
+                        self.root_launch = None;
+                        self.show_error(e);
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => self.root_launch = None,
+                    Err(std::sync::mpsc::TryRecvError::Empty) => {
+                        ctx.request_repaint_after(Duration::from_millis(100));
+                    }
                 }
             }
         }
@@ -1142,16 +1147,17 @@ impl OxTreeApp {
         }
     }
 
-    /// File, Rescan as Root: a second OxTree as root on the current path.
-    /// This window stays as it is.
+    /// File, Rescan as Root: OxTree as root on the current path replaces
+    /// this window once it is up. A dismissed or refused authorization
+    /// leaves this window as it is.
     pub fn rescan_as_root(&mut self) {
         let Some(path) = self.scan_path.clone() else {
             return;
         };
         match oxtree_native::root::relaunch_as_root(&path, &oxtree_native::config::config_dir()) {
-            Ok(rx) => {
-                self.root_launch = Some(rx);
-                self.set_status("Waiting for authorization...", false);
+            Ok(launch) => {
+                self.root_launch = Some(launch);
+                self.set_status("Waiting for authorization...", true);
             }
             Err(e) => self.show_error(e),
         }

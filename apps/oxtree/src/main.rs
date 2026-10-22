@@ -124,6 +124,7 @@ impl eframe::App for Shell {
                 "first frame after {:.1} ms",
                 self.started.elapsed().as_secs_f64() * 1000.0
             );
+            oxtree_native::root::signal_ready();
         }
         let app = &mut self.app;
         app.pump(&ctx);

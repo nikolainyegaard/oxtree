@@ -1,11 +1,14 @@
-//! Running as root, and starting a second instance as root through polkit.
-//! Linux has no way to raise a running process's privileges, so "the full
-//! picture" is always another process: `pkexec oxtree PATH`, as QDirStat
-//! documents with sudo or pkexec. The root instance gets the invoking
-//! user's display and config directory through the environment and never
-//! writes configuration, so nothing ends up owned by root.
+//! Running as root, and replacing this instance with one running as root
+//! through polkit. Linux has no way to raise a running process's
+//! privileges, so "the full picture" is another process: `pkexec oxtree
+//! PATH`, as QDirStat documents with sudo or pkexec. The root instance gets
+//! the invoking user's display and config directory through the
+//! environment and never writes configuration, so nothing ends up owned by
+//! root. Once it has drawn its first frame it touches a ready file, and the
+//! instance that started it closes, so the user sees one window hand over
+//! to the next rather than two.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 
@@ -25,14 +28,43 @@ pub fn is_root() -> bool {
 /// 127 when authorization is refused.
 pub type LaunchResult = Result<i32, String>;
 
+/// A root instance on its way: its exit comes on `exit`, and `ready_file`
+/// appears once it has a window.
+pub struct Launch {
+    pub exit: Receiver<LaunchResult>,
+    pub ready_file: PathBuf,
+}
+
+impl Launch {
+    /// Whether the root instance has drawn its first frame. The file is
+    /// removed on the first true.
+    pub fn is_ready(&self) -> bool {
+        if self.ready_file.exists() {
+            let _ = std::fs::remove_file(&self.ready_file);
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/// Called by the instance that was started as root, after its first frame.
+pub fn signal_ready() {
+    if let Some(p) = std::env::var_os("OXTREE_READY_FILE") {
+        let _ = std::fs::write(p, b"");
+    }
+}
+
 /// Start `pkexec oxtree PATH` with the session's display handed through,
 /// since pkexec clears the environment. The call returns at once; the
 /// receiver reports when the root instance ends.
-pub fn relaunch_as_root(
-    scan_path: &Path,
-    config_dir: &Path,
-) -> Result<Receiver<LaunchResult>, String> {
+pub fn relaunch_as_root(scan_path: &Path, config_dir: &Path) -> Result<Launch, String> {
     let exe = std::env::current_exe().map_err(|e| format!("Cannot find the OxTree binary: {e}"))?;
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+    let ready_file = runtime.join(format!("oxtree-root-{}", std::process::id()));
+    let _ = std::fs::remove_file(&ready_file);
     let mut cmd = Command::new("pkexec");
     cmd.arg("env");
     for key in [
@@ -56,43 +88,32 @@ pub fn relaunch_as_root(
         }
     }
     cmd.arg(format!("OXTREE_CONFIG_DIR={}", config_dir.display()));
+    cmd.arg(format!("OXTREE_READY_FILE={}", ready_file.display()));
     cmd.arg(exe).arg(scan_path);
+    // Nothing is piped: this process goes away once the root instance is
+    // up, and a child writing to a closed pipe would fail its prints.
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::piped());
+        .stderr(Stdio::null());
     let mut child = cmd.spawn().map_err(|e| format!("Cannot run pkexec: {e}"))?;
     let (tx, rx) = mpsc::channel();
-    let stderr = child.stderr.take();
     std::thread::spawn(move || {
-        let err = stderr
-            .map(|mut s| {
-                let mut buf = String::new();
-                let _ = std::io::Read::read_to_string(&mut s, &mut buf);
-                buf
-            })
-            .unwrap_or_default();
         let result = match child.wait() {
             Ok(status) => match status.code() {
                 Some(0) => Ok(0),
                 Some(126) => Err("Authorization dismissed.".into()),
                 Some(127) => Err("Not authorized to run OxTree as root.".into()),
-                Some(code) => {
-                    let detail = err.trim();
-                    if detail.is_empty() {
-                        Err(format!("The root instance ended with code {code}."))
-                    } else {
-                        Err(format!(
-                            "The root instance ended with code {code}: {detail}"
-                        ))
-                    }
-                }
+                Some(code) => Err(format!("The root instance ended with code {code}.")),
                 None => Err("The root instance was killed.".into()),
             },
             Err(e) => Err(format!("Waiting for the root instance failed: {e}")),
         };
         let _ = tx.send(result);
     });
-    Ok(rx)
+    Ok(Launch {
+        exit: rx,
+        ready_file,
+    })
 }
 
 #[cfg(test)]

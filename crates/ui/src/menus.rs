@@ -228,7 +228,7 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
                     egui::Button::new("Rescan as Root..."),
                 )
                 .on_hover_text(
-                    "Opens a second OxTree window as root on the same directory, through polkit",
+                    "Replaces this window with OxTree running as root on the same directory, through polkit",
                 )
                 .clicked()
             {
