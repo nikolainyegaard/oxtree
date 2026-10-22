@@ -38,6 +38,7 @@ crates/core/src/
   glob.rs                  * and ? matching for category patterns
   cleanup.rs               Cleanup struct, placeholders, standard set, INI mapping
   ini.rs                   QSettings-compatible INI read and write
+  settings.rs              the settings file's keys, defaults and fallbacks; release tag parsing
   cache.rs                 QDirStat cache file parse (1.0, 2.0) and write (1.0)
   format.rs                sizes, percentages, permissions, elapsed time
   time.rs                  unix time to date text with a fixed UTC offset
@@ -49,7 +50,8 @@ crates/native/src/
   run.rs                   shell -c with streamed stdout and stderr
   trash.rs                 gio trash
   dialog.rs                kdialog or zenity directory chooser
-  config.rs                XDG config dir, cleanups file, QDirStat fallback
+  config.rs                XDG config dir, settings and cleanups files, QDirStat fallback
+  update.rs                the opt-in release check through curl
   cache_io.rs              cache files on disk, gzip through the system binary
   localtime.rs             date +%z once
   mounts.rs                /proc/self/mounts, df for volume sizes and free space, which filesystems a scan may cross into
@@ -67,7 +69,7 @@ crates/ui/src/
   details_view.rs          details panel
   status_bar.rs
   menus.rs                 menu bar and shortcuts
-  dialogs.rs               modals and the cleanup output window
+  dialogs.rs               modals, the Preferences dialog and the cleanup output window
 apps/oxtree/src/
   main.rs
 ```
@@ -101,6 +103,8 @@ Four direct dependencies outside std:
 | epaint_default_fonts 0.37 | Ubuntu Light and egui's icon font, registered by hand so that Hack, the 309 KB monospace face, stays out of the binary. |
 | eframe 0.37 (glow, wayland, x11, system_fonts, clipboard) | The window and the immediate-mode UI. glow is the lighter renderer; wgpu adds a shader compiler and more memory for nothing a treemap needs. The clipboard feature pulls in arboard and smithay-clipboard so Ctrl+V reads the system clipboard; without it egui only pastes what it copied itself. 0.37 paces Wayland frames by compositor callbacks instead of a blocking swap, so the app keeps running when the compositor withholds frames. The system_fonts feature loads the machine's own fonts on demand for characters the bundled face lacks, which is what makes CJK and emoji file names readable; it costs about 620 KB of fontique and friends. |
 
-Everything else is a child process: `pkexec` for Rescan as Root, `df` for the sizes in the Open Directory list, `gzip` for compressed cache files, `gio trash`, `kdialog` or `zenity` for the directory chooser, `date +%z` for the time zone, the user's shell for cleanups.
+Everything else is a child process: `pkexec` for Rescan as Root, `df` for volume sizes and free space, `gzip` for compressed cache files, `gio trash`, `kdialog` or `zenity` for the directory chooser, `date +%z` for the time zone, `curl` for the opt-in update check, the user's shell for cleanups.
 
-The opt-in update check, when it comes, will use `curl` as a child process rather than an HTTP crate.
+## Settings
+
+`~/.config/oxtree/settings.conf`, INI, read once in `main` before the window (it holds the window size and the theme) and handed to `OxTreeApp` through `EarlyWork`. The app keeps settings as ordinary fields; `apply_settings` loads them and `to_settings` collects them for `config::save_settings`, called when the Preferences dialog closes and from `on_exit`. A root instance reads the invoking user's file through `OXTREE_CONFIG_DIR` and never writes it.

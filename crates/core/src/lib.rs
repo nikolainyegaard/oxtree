@@ -14,6 +14,7 @@ pub mod ini;
 pub mod layout;
 pub mod mime;
 pub mod query;
+pub mod settings;
 pub mod time;
 pub mod tree;
 pub mod types;

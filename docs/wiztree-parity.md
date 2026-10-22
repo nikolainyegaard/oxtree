@@ -1,6 +1,6 @@
 # OxTree vs WizTree: target-app parity
 
-> **Last reviewed:** 2026-10-22 · **Last updated:** 2026-10-22 · **Change:** File Types view, CSV export and headless export, copy tree to clipboard, multi-selection, duplicates, names on tiles, free space in tree, treemap and status bar, hard links shared, Expand All and expand to level, resizable columns, alternating rows, sideways scrolling, the Reset button; earlier the same day: crossing local filesystems is the default, mounted filesystem list in Open Directory, entered mount points marked; a Ports section pins the Windows MFT reader and the macOS branch; earlier the same day: search landed (WizTree syntax, name or path mode, regex via regex-lite, highlighted matches, Ctrl+F); earlier the same day: File View landed (flat list, top-N cap, folders toggle, Ctrl+1 and Ctrl+2); earlier the same day: first version, inventory taken from WizTree's guide, feature page and version history · **Target:** WizTree 4.33 for Windows (16 September 2026), with WizTreeMac 1.00 as the reference for what WizTree does without an MFT
+> **Last reviewed:** 2026-10-22 · **Last updated:** 2026-10-22 · **Change:** settings file and Preferences dialog with the pinned items, theme, row height, size decimals, search history, opt-in update check, reset; earlier the same day: File Types view, CSV export and headless export, copy tree to clipboard, multi-selection, duplicates, names on tiles, free space in tree, treemap and status bar, hard links shared, Expand All and expand to level, resizable columns, alternating rows, sideways scrolling, the Reset button; earlier the same day: crossing local filesystems is the default, mounted filesystem list in Open Directory, entered mount points marked; a Ports section pins the Windows MFT reader and the macOS branch; earlier the same day: search landed (WizTree syntax, name or path mode, regex via regex-lite, highlighted matches, Ctrl+F); earlier the same day: File View landed (flat list, top-N cap, folders toggle, Ctrl+1 and Ctrl+2); earlier the same day: first version, inventory taken from WizTree's guide, feature page and version history · **Target:** WizTree 4.33 for Windows (16 September 2026), with WizTreeMac 1.00 as the reference for what WizTree does without an MFT
 
 The authoritative answer to "how close is OxTree to WizTree, and what is left". Each row is a WizTree feature, what OxTree has for it today, and what closing the gap touches. The ranked list of what to build next is at the end. QDirStat is the reference for behaviour and defaults where WizTree has nothing to say; it is not the target.
 
@@ -8,11 +8,11 @@ The authoritative answer to "how close is OxTree to WizTree, and what is left". 
 
 | Number | Value | How |
 |---|---|---|
-| **Feature breadth** (does each WizTree feature exist?) | **70%** | Done rows plus half of Partial rows, over the 97 rows that apply on Linux; counted from the tables below |
-| **Rows** | 59 done, 17 partial, 21 missing, 6 not applicable, 3 declined | counted over the status column of the tables below |
+| **Feature breadth** (does each WizTree feature exist?) | **77%** | Done rows plus half of Partial rows, over the 97 rows that apply on Linux; counted from the tables below |
+| **Rows** | 65 done, 20 partial, 12 missing, 6 not applicable, 3 declined | counted over the status column of the tables below |
 | **Stage** | **beta** | Scan, tree, treemap, File View, File Types, duplicates, search, export, multi-selection, cleanups and trash work end to end; what is left is settings, rename and the smaller items |
 
-The number is honest about breadth only. Where OxTree has a feature it is usually complete, because the views were built from QDirStat, which is deeper than WizTree in those areas. What is missing is mostly settings: nothing is persisted yet, so the choices made in the strips reset with the window.
+The number is honest about breadth only. Where OxTree has a feature it is usually complete, because the views were built from QDirStat, which is deeper than WizTree in those areas. What is missing is the small items at the end of the ranked list and the Windows-only plumbing.
 
 ## Target measured
 
@@ -39,7 +39,7 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 | Scan a whole drive or a single folder | Done | Any directory from the command line or Open Directory | |
 | Scan several drives or folders at once, custom folder list | Missing | One root per window | A virtual root with several children in the arena; Open Directory taking several paths |
 | Scan network drives and non-NTFS volumes | Partial | Any mounted filesystem can be the root; crossing into network mounts during a scan is refused by the mount rules | Nothing to change unless someone asks to cross into NFS |
-| Cross into other local filesystems during a scan | Done | On by default, as `du` and `ncdu` do; kernel tables and network mounts stay leaves, and removable media under /run with them. Checkbox in Open Directory; `OXTREE_CROSS_FILESYSTEMS=0` for the old behaviour until it is a saved setting. Entered mount points keep a disk badge on their folder icon and show their filesystem in the details panel | Persist the checkbox once the settings file exists |
+| Cross into other local filesystems during a scan | Done | On by default, as `du` and `ncdu` do; kernel tables and network mounts stay leaves, and removable media under /run with them. Checkbox in Open Directory and in Preferences, saved. Entered mount points keep a disk badge on their folder icon and show their filesystem in the details panel | |
 | Scan phones and cameras over MTP | N/A | | GVFS exposes MTP as a mount, so a scan of /run/user/*/gvfs would work; not planned |
 | Hard-linked files counted once, allocated totals match the OS | Done | Each link of a file carries an equal share of its allocated size, so the totals count the file once whichever link the walk met first; links outside the scanned directory make a file look smaller than it is, as in QDirStat | |
 | Allocated size and file size both available | Partial | Allocated size only (`st_blocks * 512`); the details panel shows it under both labels | A second u64 per node (8 MB per million files) and a column toggle |
@@ -63,12 +63,12 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 | Free space shown as a row in the tree | Done | `<Free Space>` as the last row under the root, with its share of the volume as a bar, when the scanned directory is a mount point | |
 | Deleted items marked until the next rescan | N/A | OxTree rescans after every delete, so the item is simply gone | |
 | Separate File Name column, header show and hide (Ctrl+H) | Missing | | Low value; header hide is a one-liner if asked |
-| Adjustable row height, font size with Ctrl+wheel | Missing | | egui zoom factor is a one-liner for Ctrl+wheel; row height from the settings file |
-| Grid lines and alternating row colours | Done | Alternating row colours in all three tables | A setting once there is a settings file |
+| Adjustable row height, font size with Ctrl+wheel | Partial | Row height in Preferences, 16 to 40, saved | Font size: egui's zoom factor on Ctrl+wheel over the tables; Ctrl+wheel over the treemap is zoom already |
+| Grid lines and alternating row colours | Done | Alternating row colours in all three tables | |
 | Values too wide for a cell marked with a red edge | Partial | Columns are resizable by dragging the header dividers and the tables scroll sideways, so nothing is cut off for long; no red edge | Low value now |
 | Status bar with selection totals, file count, hovered name | Done | Selection path and size, or the count and total of a multi-selection, on the left; item count, total and free space on the right; the hovered tile's name is in the tooltip | |
 | Max modified date per folder | Done | Last Modified is the newest mtime in the subtree | |
-| Configurable decimal places | Missing | | One setting into `format::size` |
+| Configurable decimal places | Done | Size decimals in Preferences, 0 to 3 | |
 
 ## Treemap
 
@@ -91,7 +91,7 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 | WizTree feature | Status | OxTree today | What closing it touches |
 |---|---|---|---|
 | File View: every file and folder in one flat list sorted by size | Done | File View tab (Ctrl+2): path, size, percent of total, last modified; sort by column; click selects, double click or Enter jumps to the item in the tree; same right-click menu | |
-| Top 1000 files, max files to display setting | Done | Show 1 000, 10 000, 100 000 or All, default 1 000 | The choice is not saved yet; a setting once the settings file exists |
+| Top 1000 files, max files to display setting | Done | Show 1 000, 10 000, 100 000 or All, default 1 000, saved with the Folders, Duplicates and Name or Path choices | |
 | Folders shown in the File View | Done | Folders checkbox, off by default | |
 | File Types view: extension, count, size, allocated, colour | Done | File Types tab (Ctrl+3, F8): extension with its category colour, category, files, size, share; sortable; built in about 10 ms for /usr | Allocated is the only size |
 | Select all files of an extension | Done | Double click a type lists its files in the File View; Ctrl+A there selects them all | |
@@ -108,7 +108,7 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 | `=folder` and `=file` filters | Done | | |
 | Regular expression search (`/` prefix) | Done | `regex-lite`, case-insensitive | |
 | Match File Name Only or Match Entire Path | Done | Name and Path radio buttons | |
-| Search history dropdown | Missing | | Last ten queries in the settings file |
+| Search history dropdown | Done | The dropdown after the search box, last ten searches, saved | |
 | Include and exclude filters (Ctrl+Shift+F), applied to scan results or during the scan | Partial | Exclude by directory name during the scan | The query parser applied to the arena, producing a filtered index for the views |
 | Highlighted matches in results | Done | The first substring term is highlighted in the path; globs and regexes are not | |
 | Accent-insensitive name search | Missing | | Fold to lowercase is there; accent folding needs a small table |
@@ -149,7 +149,7 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 | Automated CSV export without a window (`/export`, filters, sort, columns) | Done | `oxtree DIR --export FILE` scans and writes without a window, `-` for stdout, `--tsv`, `--utc`, `--max-depth N`, `--percent`, `--search QUERY` as a filter; `--cache FILE --export` converts a cache file | No sort or column choice; the file is in tree order |
 | Treemap image export from the command line | Partial | `--screenshot` writes the window | Treemap only, chosen size, no window |
 | Load an export file from the command line | Done | `--cache FILE` | |
-| Config folder location parameter | Missing | | XDG already covers the common case; `--config DIR` is a few lines |
+| Config folder location parameter | Partial | `OXTREE_CONFIG_DIR`, which Rescan as Root uses | A `--config DIR` flag if anyone asks |
 | Debug logging parameter | Partial | `OXTREE_STATS=1` prints rebuild and CPU numbers | A `--log` flag if ever needed |
 | Installer and registry options, silent install, read-only policy settings | N/A | | Packaging (rpm, Flatpak) is a separate task; policy overrides are not a Linux convention |
 
@@ -175,14 +175,14 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 
 | WizTree feature | Status | OxTree today | What closing it touches |
 |---|---|---|---|
-| Options menu with persistent settings | Missing | Cleanups are the only configuration file; two settings live behind environment variables, pinned in gotchas.md | A settings file in the INI format already parsed, then a Preferences dialog; the pinned list is the first content |
-| Dark mode, Windows theme, high contrast | Partial | egui follows the desktop's light or dark preference; no explicit choice | A theme setting |
+| Options menu with persistent settings | Done | Edit, Preferences (Ctrl+comma) and `~/.config/oxtree/settings.conf`: cross filesystems, rebuild delay, tile names, row height, size decimals, theme, update check; the window size, the panels, the column widths, the File View choices and the search history are saved with it | |
+| Dark mode, Windows theme, high contrast | Done | Follow the desktop, light or dark, in Preferences | No high contrast theme |
 | High DPI scaling | Done | egui scales with the compositor | |
-| Tweaks: drag and drop, double click action, rendering | Missing | | Settings, once there is a settings file |
-| Portable mode, config next to the executable | Missing | | `--config DIR` covers the use |
+| Tweaks: drag and drop, double click action, rendering | Partial | Rebuild delay and tile names are the rendering tweaks | Drag and drop is declined above; double click on a file is a small item |
+| Portable mode, config next to the executable | Partial | `OXTREE_CONFIG_DIR=. oxtree` | |
 | Run as administrator | Done | File, Rescan as Root replaces the window with one running as root through polkit on the same path; the title shows [root], the root instance reads the user's configuration and never writes it; the status bar suggests it when directories could not be read | A polkit action file is in `packaging/` for installs that put the binary in /usr/bin |
-| Check for updates | Missing | No network access from the app today | Opt-in only: a Check for Updates button, a Check Automatically toggle that is off by default, and a frequency (daily, weekly, monthly). Never a request unless the toggle is on. One GET of the GitHub releases API through `curl` as a child process, compare the tag with the version, show a status line and a link; no download, no install. Pinned in gotchas.md for the settings work |
-| Reset configuration | Missing | | Delete the settings file and reload defaults; part of the Preferences dialog |
+| Check for updates | Done | Opt-in: a Check for Updates button in Preferences, Check automatically off by default, daily, weekly or monthly; one GET of the GitHub releases API through `curl`, the tag compared with the version, a line with a link to the release page; no download, no install, no request while the toggle is off | |
+| Reset configuration | Done | Reset to Defaults in Preferences, applied at once and written | Cleanups keep their own file |
 | Translations | Missing | | English only; strings are literals in the views |
 | Supporter code, enterprise licence | N/A | GPL | |
 
@@ -202,13 +202,13 @@ What OxTree has that WizTree does not, so the comparison runs both ways: user-de
 Ordered by how much of WizTree's daily use each one unlocks, divided by what it touches.
 
 1. **File View with a top-N cap.** Done 2026-10-22.
-2. **Search and filter.** Search done 2026-10-22. What remains is the tree filter: Ctrl+Shift+F include and exclude patterns applied to the scan results with sizes recomputed over the matches, plus the search history, both waiting on the settings file.
+2. **Search and filter.** Search and the history done 2026-10-22. What remains is the tree filter: Ctrl+Shift+F include and exclude patterns applied to the scan results with sizes recomputed over the matches.
 3. **File Types view.** Done 2026-10-22.
 4. **CSV export and clipboard copy.** Done 2026-10-22, with the headless mode.
 5. **Multi-selection.** Done 2026-10-22.
 6. **Duplicates.** Done 2026-10-22.
 7. **Names on treemap tiles, free space in tree and treemap, hard link dedup.** Done 2026-10-22.
-8. **Settings file and Preferences dialog.** Unblocks the pinned items (cross filesystems, rebuild delay, opt-in update check), decimal places, row height, theme, expand level, column widths, the File View choices, the search history, reset to defaults.
-9. **Rename, open on double click, font size, a second size column (file size next to allocated), the treemap image export, a CSV import.** Small items taken as they come.
+8. **Settings file and Preferences dialog.** Done 2026-10-22.
+9. **Rename, open on double click, font size, a second size column (file size next to allocated), the treemap image export, a CSV import, the tree filter.** Small items taken as they come.
 
-Items 1 to 7 are in. What is left is the settings work and the small items. Review this document when one of them lands: update the row, the counts and the headline.
+Items 1 to 8 are in. Review this document when one of the small items lands: update the row, the counts and the headline.

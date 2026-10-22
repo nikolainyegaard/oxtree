@@ -98,12 +98,17 @@ fn main() {
     }
     let started = Instant::now();
     startup_mark("arguments parsed");
-    let early = oxtree_ui::app::begin_early(if args.cache.is_none() {
-        args.path.clone()
-    } else {
-        None
-    });
-    startup_mark("config and date +%z started on a thread");
+    let settings = oxtree_native::config::load_settings();
+    let early = oxtree_ui::app::begin_early(
+        if args.cache.is_none() {
+            args.path.clone()
+        } else {
+            None
+        },
+        settings.clone(),
+    );
+    startup_mark("settings read, config and date +%z started on a thread");
+    let (w, h) = settings.window.unwrap_or((1200.0, 800.0));
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(if oxtree_native::root::is_root() {
@@ -112,7 +117,7 @@ fn main() {
                 "OxTree"
             })
             .with_app_id("oxtree")
-            .with_inner_size([1200.0, 800.0])
+            .with_inner_size([w, h])
             .with_min_inner_size([640.0, 400.0]),
         ..Default::default()
     };
@@ -160,12 +165,12 @@ fn export(args: &Args, file: &PathBuf) -> i32 {
     let tree = match (&args.cache, &args.path) {
         (Some(c), _) => oxtree_native::cache_io::read(c),
         (None, Some(p)) => {
-            let (threads, cross) = oxtree_ui::app::scan_defaults();
+            let settings = oxtree_native::config::load_settings();
             oxtree_native::walker::scan_blocking(
                 p,
                 oxtree_native::ScanOptions {
-                    threads,
-                    cross_filesystems: cross,
+                    threads: oxtree_ui::app::scan_threads(),
+                    cross_filesystems: settings.cross_filesystems,
                     mounts: oxtree_native::mounts::MountTable::load(),
                     ..Default::default()
                 },
@@ -285,8 +290,16 @@ impl eframe::App for Shell {
         visuals.extreme_bg_color.to_normalized_gamma_f32()
     }
 
+    /// The settings file is written once, here; the Preferences dialog
+    /// writes it too when it closes.
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.app.save_settings();
+    }
+
     fn ui(&mut self, root: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = root.ctx().clone();
+        let screen = ctx.content_rect();
+        self.app.window_size = Some((screen.width(), screen.height()));
         if self.first_frame {
             self.first_frame = false;
             startup_mark("first update called: event loop warm-up, first redraw request");

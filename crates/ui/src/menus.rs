@@ -21,6 +21,7 @@ const VIEW_FILES: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key:
 const VIEW_TYPES: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Num3);
 const VIEW_TYPES_F8: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F8);
 const FIND: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::F);
+const PREFERENCES: KeyboardShortcut = KeyboardShortcut::new(Modifiers::CTRL, Key::Comma);
 const EXPAND_ALL: KeyboardShortcut = KeyboardShortcut::new(Modifiers::SHIFT, Key::F4);
 const CTRL_ALT: Modifiers = Modifiers {
     alt: true,
@@ -91,6 +92,9 @@ pub fn handle_shortcuts(app: &mut OxTreeApp, ctx: &egui::Context) {
     }
     if pressed(&FIND) {
         app.focus_search();
+    }
+    if pressed(&PREFERENCES) {
+        app.preferences_open = true;
     }
     let hotkeys: Vec<(usize, String)> = app
         .cleanups
@@ -376,6 +380,17 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
                 .clicked()
             {
                 app.move_to_trash();
+                ui.close();
+            }
+            ui.separator();
+            if ui
+                .add(
+                    egui::Button::new("Preferences...")
+                        .shortcut_text(ctx.format_shortcut(&PREFERENCES)),
+                )
+                .clicked()
+            {
+                app.preferences_open = true;
                 ui.close();
             }
         });

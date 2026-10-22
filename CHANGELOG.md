@@ -8,6 +8,8 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Settings file `~/.config/oxtree/settings.conf` and Edit, Preferences (Ctrl+comma): cross filesystems, treemap rebuild delay, names on tiles, row height, size decimals, theme (follow the desktop, light, dark), an opt-in update check that is off by default, Reset to Defaults; the window size, the panels, column widths, the File View choices and the search history are saved with it
+- Search history: the dropdown after the search box holds the last ten searches
 - File Types view (Ctrl+3, F8): one row per extension with its category colour, file count, size and share; double click lists the type's files in the File View
 - Duplicates in the File View: a combo for name and size, or name, size and date; the list then holds only files with a duplicate, grouped, with Dups and Dup Size columns
 - Multi-selection: Ctrl+click and Shift+click in the tree and the File View, Ctrl+click on treemap tiles, Ctrl+A; Copy Path, Move to Trash and the cleanups act on every selected item, the status bar and the details panel show the selection's count and size
@@ -40,6 +42,7 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- The `OXTREE_CROSS_FILESYSTEMS` and `OXTREE_REBUILD_DELAY_MS` environment variables are gone; both are settings now
 - Hard-linked files count once: each link carries an equal share of the file's allocated size
 
 ### Fixed

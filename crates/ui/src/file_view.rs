@@ -89,6 +89,30 @@ pub fn tabs(app: &mut OxTreeApp, ui: &mut Ui) {
             if resp.changed() {
                 fv.dirty = true;
             }
+            let remember = resp.lost_focus();
+            // The last ten searches, newest first.
+            let mut picked = None;
+            egui::ComboBox::from_id_salt("search-history")
+                .selected_text("")
+                .width(12.0)
+                .show_ui(ui, |ui| {
+                    if app.search_history.is_empty() {
+                        ui.label(egui::RichText::new("No searches yet").weak());
+                    }
+                    for h in &app.search_history {
+                        if ui.selectable_label(false, h).clicked() {
+                            picked = Some(h.clone());
+                        }
+                    }
+                });
+            if let Some(h) = picked {
+                app.file_view.search = h;
+                app.file_view.dirty = true;
+            }
+            if remember {
+                app.remember_search();
+            }
+            let fv = &mut app.file_view;
             if ui.radio_value(&mut fv.match_path, false, "Name").changed()
                 || ui.radio_value(&mut fv.match_path, true, "Path").changed()
             {
@@ -165,6 +189,7 @@ fn reset_button(ui: &mut Ui) -> egui::Response {
 }
 
 pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
+    let row_h = app.row_height;
     app.request_file_view(ui.ctx());
     let font = egui::TextStyle::Body.resolve(ui.style());
     let text_color = ui.visuals().strong_text_color();
@@ -176,10 +201,8 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
         .filter(|(m, _)| *m == app.file_view.dup_mode)
         .map(|(_, c)| c.clone());
 
-    let (header_rect, _) = ui.allocate_exact_size(
-        Vec2::new(ui.available_width(), theme::ROW_HEIGHT),
-        Sense::hover(),
-    );
+    let (header_rect, _) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), row_h), Sense::hover());
 
     let total = app.file_view.rows.len();
     let selected = app.selected;
@@ -196,11 +219,11 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
         .id_salt("file-rows");
     if let Some(i) = scroll_to {
         let spacing = ui.spacing().item_spacing.y;
-        let offset = i as f32 * (theme::ROW_HEIGHT + spacing) - ui.available_height() / 2.0;
+        let offset = i as f32 * (row_h + spacing) - ui.available_height() / 2.0;
         area = area.vertical_scroll_offset(offset.max(0.0));
     }
     let shown_columns = if dup_mode { 6 } else { 4 };
-    let out = area.show_rows(ui, theme::ROW_HEIGHT, total, |ui, range| {
+    let out = area.show_rows(ui, row_h, total, |ui, range| {
         let Some(tree) = app.tree.clone() else { return };
         let root_size = tree.size(tree.root()).max(1);
         let width = ui
@@ -211,8 +234,7 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
             let Some(node) = app.file_view.rows.get(i).copied() else {
                 continue;
             };
-            let (rect, _) =
-                ui.allocate_exact_size(Vec2::new(width, theme::ROW_HEIGHT), Sense::hover());
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(width, row_h), Sense::hover());
             let resp = ui.interact(
                 rect,
                 egui::Id::unique(("oxtree-file-row", node)),

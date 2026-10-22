@@ -152,8 +152,8 @@ fn bench(path: PathBuf) {
     }
 }
 
-/// The benchmark honours the same environment switch as the app, so a scan
-/// of / can be timed with and without crossing filesystems.
+/// `OXTREE_CROSS_FILESYSTEMS=0` turns crossing off for a timing run; the
+/// app itself takes this from the settings file.
 fn bench_scan_options() -> oxtree_native::ScanOptions {
     let cross =
         !std::env::var_os("OXTREE_CROSS_FILESYSTEMS").is_some_and(|v| v == "0" || v == "false");

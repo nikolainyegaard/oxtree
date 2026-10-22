@@ -6,7 +6,7 @@ OxTree scans a directory on all cores, draws the result as a sortable tree with 
 
 ## Status
 
-Version 0.1.0 covers the daily use: scan, tree, treemap, details, cleanups, trash, QDirStat cache files, a File View with search, a File Types view, duplicates, CSV export and multi-selection. Not there yet: a settings file, so column widths and the choices in the tab strip reset with the window; rename; a file age view; exclude rule and category editors. Cleanups and exclude rules are edited in their configuration files.
+Version 0.1.0 covers the daily use: scan, tree, treemap, details, cleanups, trash, QDirStat cache files, a File View with search, a File Types view, duplicates, CSV export, multi-selection and a Preferences dialog. Not there yet: rename, a file age view, exclude rule and category editors. Cleanups and exclude rules are edited in their configuration files.
 
 ## Build
 
@@ -50,9 +50,10 @@ Without arguments a dialog asks for the directory. It lists every mounted local 
 | Ctrl+C | Copy the path |
 | Delete | Move to trash |
 | Ctrl+G, Ctrl+T, Ctrl+Y, Ctrl+Delete | Open file manager, open terminal, check file type, delete (from the standard cleanups) |
+| Ctrl+comma | Preferences: cross filesystems, treemap rebuild delay, names on tiles, row height, size decimals, theme, update check |
 | Ctrl+Q | Quit |
 
-Directories on other filesystems are shown but not entered; `.snapshot` directories are skipped. Cleanups come from `~/.config/oxtree/cleanups.conf`, or from QDirStat's own cleanup file when OxTree has none yet. The format and the standard set are described in [docs/cleanups.md](docs/cleanups.md).
+`.snapshot` directories are skipped. Settings live in `~/.config/oxtree/settings.conf`, written when the Preferences dialog closes and on exit; column widths, the File View choices and the search history go there too. OxTree never touches the network unless the update check is turned on in Preferences or its button is pressed; a check is one request to the GitHub releases API through `curl`, and nothing is downloaded. Cleanups come from `~/.config/oxtree/cleanups.conf`, or from QDirStat's own cleanup file when OxTree has none yet. The format and the standard set are described in [docs/cleanups.md](docs/cleanups.md).
 
 Cache files are QDirStat's format, so a scan written on a server with `qdirstat-cache-writer` opens here, and a file written here opens in QDirStat.
 

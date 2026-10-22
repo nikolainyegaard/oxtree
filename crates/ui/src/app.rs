@@ -17,9 +17,11 @@ use oxtree_core::flat::{flat_list_filtered, FlatSort};
 use oxtree_core::layout::Tile;
 use oxtree_core::mime::Categorizer;
 use oxtree_core::query::{Item, Query};
+use oxtree_core::settings::{Settings, Theme};
 use oxtree_core::types::TypeRow;
 use oxtree_core::{format, Kind, NodeId, Tree, NO_NODE};
 use oxtree_native::run::RunEvent;
+use oxtree_native::update::UpdateResult;
 use oxtree_native::{ScanEvent, ScanHandle, ScanOptions, Wake};
 
 use crate::columns::Columns;
@@ -71,6 +73,8 @@ pub struct ExportDialog {
     pub utc: bool,
     pub percent_of_parent: bool,
 }
+
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Default widths: name, percent bar, percent, size, items, files,
 /// subdirs, last modified. Each includes its padding.
@@ -287,9 +291,22 @@ pub struct OxTreeApp {
     pub desktop: String,
     pub shading: Shading,
     pub threads: usize,
-    /// Enter other local filesystems when scanning. Off by default, as in
-    /// QDirStat; `OXTREE_CROSS_FILESYSTEMS=1` until it is a setting.
+    /// Enter other local filesystems when scanning; `[DirectoryTree]
+    /// CrossFilesystems`, on by default.
     pub cross_filesystems: bool,
+    /// Settings that are not state of a view: see `settings.rs` for the keys.
+    pub row_height: f32,
+    pub theme: Theme,
+    pub size_decimals: u8,
+    pub search_history: Vec<String>,
+    pub check_updates: bool,
+    pub check_interval_days: u32,
+    pub last_check: i64,
+    pub update_job: Option<Receiver<UpdateResult>>,
+    pub update_result: Option<UpdateResult>,
+    pub preferences_open: bool,
+    /// The window's size each frame, saved with the settings on exit.
+    pub window_size: Option<(f32, f32)>,
     /// Called by the scan threads after every event, once the egui context
     /// is attached, so a finished scan is drawn on the next frame rather
     /// than on the next poll.
@@ -311,7 +328,7 @@ pub struct OxTreeApp {
     /// How long the treemap size has to hold still before a rebuild. Zero,
     /// the default, rebuilds every frame during a resize: measured at about
     /// 120% of one core for the duration of a drag, which is fine. QDirStat
-    /// waits 200 ms; `OXTREE_REBUILD_DELAY_MS` sets that here.
+    /// waits 200 ms; `[Treemaps] RebuildDelayMillisec` sets that here.
     pub rebuild_delay: Duration,
     /// `OXTREE_STATS=1` prints rebuild counts and process CPU time once a second.
     #[cfg(feature = "diagnostics")]
@@ -344,27 +361,20 @@ pub fn process_cpu_ms() -> Option<u64> {
 pub struct EarlyWork {
     start: Option<PathBuf>,
     mounts: oxtree_native::mounts::MountTable,
-    cross_filesystems: bool,
+    settings: Settings,
     threads: usize,
     config: std::thread::JoinHandle<(Vec<Cleanup>, Option<String>, i32)>,
 }
 
-/// Defaults for a scan from the environment; the settings file will own
-/// these.
-pub fn scan_defaults() -> (usize, bool) {
-    let threads = std::thread::available_parallelism()
+/// Scan workers: one per core, capped at 16.
+pub fn scan_threads() -> usize {
+    std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4)
-        .min(16);
-    // On by default: a scan of / should show the machine, as du and ncdu
-    // do. Kernel tables and network mounts stay out either way.
-    let cross =
-        !std::env::var_os("OXTREE_CROSS_FILESYSTEMS").is_some_and(|v| v == "0" || v == "false");
-    (threads, cross)
+        .min(16)
 }
 
-pub fn begin_early(start: Option<PathBuf>) -> EarlyWork {
-    let (threads, cross_filesystems) = scan_defaults();
+pub fn begin_early(start: Option<PathBuf>, settings: Settings) -> EarlyWork {
     let mounts = oxtree_native::mounts::MountTable::load();
     let config = std::thread::spawn(|| {
         let (cleanups, note) = oxtree_native::config::load_cleanups();
@@ -373,8 +383,8 @@ pub fn begin_early(start: Option<PathBuf>) -> EarlyWork {
     EarlyWork {
         start,
         mounts,
-        cross_filesystems,
-        threads,
+        settings,
+        threads: scan_threads(),
         config,
     }
 }
@@ -384,7 +394,7 @@ impl OxTreeApp {
         let EarlyWork {
             start,
             mounts,
-            cross_filesystems,
+            settings,
             threads,
             config,
         } = early;
@@ -450,7 +460,18 @@ impl OxTreeApp {
             desktop: std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default(),
             shading: Shading::default(),
             threads,
-            cross_filesystems,
+            cross_filesystems: true,
+            row_height: theme::ROW_HEIGHT,
+            theme: Theme::System,
+            size_decimals: 1,
+            search_history: Vec::new(),
+            check_updates: false,
+            check_interval_days: 7,
+            last_check: 0,
+            update_job: None,
+            update_result: None,
+            preferences_open: false,
+            window_size: None,
             wake: Wake::default(),
             mounts,
             entered_mounts: HashSet::new(),
@@ -459,12 +480,7 @@ impl OxTreeApp {
             screenshot: None,
             #[cfg(feature = "diagnostics")]
             quit_after_screenshot: false,
-            rebuild_delay: Duration::from_millis(
-                std::env::var("OXTREE_REBUILD_DELAY_MS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(0),
-            ),
+            rebuild_delay: Duration::ZERO,
             #[cfg(feature = "diagnostics")]
             stats: std::env::var_os("OXTREE_STATS").map(|_| Stats {
                 window_start: Instant::now(),
@@ -472,6 +488,12 @@ impl OxTreeApp {
                 rebuilds_in_window: 0,
             }),
         };
+        app.apply_settings(&settings);
+        if app.check_updates
+            && unix_now().saturating_sub(app.last_check) >= app.check_interval_days as i64 * 86_400
+        {
+            app.start_update_check();
+        }
         if let Some(n) = note {
             app.set_status(n, false);
         }
@@ -483,6 +505,117 @@ impl OxTreeApp {
             app.open_dir_text = Some(std::env::var("HOME").unwrap_or_else(|_| "/".into()));
         }
         app
+    }
+
+    // ------------------------------------------------------------ settings
+
+    /// Load the settings into the state they belong to. Column widths are
+    /// taken only when the count matches, so an old file after a column
+    /// was added keeps the defaults.
+    pub fn apply_settings(&mut self, s: &Settings) {
+        self.cross_filesystems = s.cross_filesystems;
+        self.rebuild_delay = Duration::from_millis(s.rebuild_delay_ms);
+        self.show_tile_names = s.tile_names;
+        self.show_treemap = s.show_treemap;
+        self.show_details = s.show_details;
+        self.theme = s.theme;
+        self.size_decimals = s.size_decimals;
+        format::set_size_decimals(s.size_decimals);
+        self.row_height = s.row_height;
+        for (cols, saved) in [
+            (&mut self.tree_columns, &s.tree_columns),
+            (&mut self.file_columns, &s.file_columns),
+            (&mut self.types_columns, &s.types_columns),
+        ] {
+            if saved.len() == cols.widths.len() {
+                cols.widths = saved.clone();
+            }
+        }
+        self.file_view.max = s.file_max;
+        self.file_view.include_dirs = s.file_folders;
+        self.file_view.dup_mode = s.dup_mode;
+        self.file_view.match_path = s.match_path;
+        self.file_view.dirty = true;
+        self.search_history = s.search_history.clone();
+        self.check_updates = s.check_updates;
+        self.check_interval_days = s.check_interval_days;
+        self.last_check = s.last_check;
+    }
+
+    pub fn to_settings(&self) -> Settings {
+        Settings {
+            cross_filesystems: self.cross_filesystems,
+            rebuild_delay_ms: self.rebuild_delay.as_millis() as u64,
+            tile_names: self.show_tile_names,
+            show_treemap: self.show_treemap,
+            show_details: self.show_details,
+            window: self.window_size,
+            theme: self.theme,
+            size_decimals: self.size_decimals,
+            row_height: self.row_height,
+            tree_columns: self.tree_columns.widths.clone(),
+            file_columns: self.file_columns.widths.clone(),
+            types_columns: self.types_columns.widths.clone(),
+            file_max: self.file_view.max,
+            file_folders: self.file_view.include_dirs,
+            dup_mode: self.file_view.dup_mode,
+            match_path: self.file_view.match_path,
+            search_history: self.search_history.clone(),
+            check_updates: self.check_updates,
+            check_interval_days: self.check_interval_days,
+            last_check: self.last_check,
+        }
+    }
+
+    /// Write the settings file; a failure goes to the status bar.
+    pub fn save_settings(&mut self) {
+        if let Err(e) = oxtree_native::config::save_settings(&self.to_settings()) {
+            self.set_status(e, false);
+        }
+    }
+
+    /// Reset configuration: defaults in the state, in the file and on screen.
+    pub fn reset_settings(&mut self, ctx: &Context) {
+        let s = Settings::default();
+        self.apply_settings(&s);
+        self.tree_columns.reset();
+        self.file_columns.reset();
+        self.types_columns.reset();
+        self.apply_theme(ctx);
+        self.rows_dirty = true;
+        match oxtree_native::config::save_settings(&s) {
+            Ok(()) => self.set_status("Configuration reset to the defaults", false),
+            Err(e) => self.set_status(e, false),
+        }
+    }
+
+    pub fn apply_theme(&self, ctx: &Context) {
+        ctx.set_theme(match self.theme {
+            Theme::System => egui::ThemePreference::System,
+            Theme::Light => egui::ThemePreference::Light,
+            Theme::Dark => egui::ThemePreference::Dark,
+        });
+    }
+
+    /// Remember a search once the user is done typing it.
+    pub fn remember_search(&mut self) {
+        let mut s = Settings {
+            search_history: std::mem::take(&mut self.search_history),
+            ..Default::default()
+        };
+        s.remember_search(&self.file_view.search);
+        self.search_history = s.search_history;
+    }
+
+    /// Check for Updates, by hand or on schedule. Nothing runs unless this
+    /// is called.
+    pub fn start_update_check(&mut self) {
+        if self.update_job.is_some() {
+            return;
+        }
+        self.last_check = unix_now();
+        self.update_result = None;
+        self.update_job = Some(oxtree_native::update::check(VERSION));
     }
 
     // ------------------------------------------------------------ status
@@ -728,6 +861,24 @@ impl OxTreeApp {
                 self.dupes_job = None;
                 self.dupes = Some((mode, Arc::new(counts)));
                 self.file_view.dirty = true;
+            }
+        }
+        if let Some(rx) = &self.update_job {
+            match rx.try_recv() {
+                Ok(result) => {
+                    self.update_job = None;
+                    if let UpdateResult::Newer(tag) = &result {
+                        self.set_status(
+                            format!("OxTree {tag} is available; see Edit, Preferences"),
+                            false,
+                        );
+                    }
+                    self.update_result = Some(result);
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.update_job = None,
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    ctx.request_repaint_after(Duration::from_millis(250));
+                }
             }
         }
         if let Some(rx) = &self.free_job {
@@ -1327,6 +1478,7 @@ impl OxTreeApp {
 
     /// Give the background threads a way to request a frame.
     pub fn attach_context(&mut self, ctx: &Context) {
+        self.apply_theme(ctx);
         let ctx = ctx.clone();
         self.wake.set(move || ctx.request_repaint());
     }
@@ -1736,6 +1888,13 @@ impl OxTreeApp {
         let start = self.open_dir_text.clone().unwrap_or_else(|| "/".into());
         self.dir_picker = Some(oxtree_native::dialog::pick_directory(&start, &self.desktop));
     }
+}
+
+fn unix_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 pub fn sort_children(tree: &Tree, kids: &mut [NodeId], sort: Sort) {

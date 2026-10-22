@@ -84,6 +84,8 @@ The tab strip holds Tree View, File View, File Types, the Reset button (a painte
 
 Export to CSV dialog: "Exporting /path", "File to write:", checkboxes "Tab separated", "UTC timestamps", "% of parent column", "Levels below the root to include, empty for all:", Export and Cancel.
 
+Preferences dialog (Edit, Preferences, Ctrl+comma), one row per group: Scanning "Cross into other local filesystems"; Treemap "Rebuild delay" in ms and "Names on tiles"; Tables "Row height" and "Size decimals"; Appearance "Follow the desktop", "Light", "Dark"; Updates "Check automatically" with daily, weekly or monthly, a "Check for Updates" button and its result ("vX is available, this is vY" with a "Release page" link, "OxTree vY is the latest release", or the error in red). Below, in small weak text, where the file is saved; then "Reset to Defaults" and "Close". Every change applies at once; the file is written on Close. The search box in the File View strip has a history dropdown after it with the last ten searches, newest first, or "No searches yet".
+
 Details panel labels: Total Size, Items, Files, Subdirs, Size, Allocated, Last Modified, MIME Category, Permissions, Of Parent.
 
 ## Interaction
@@ -111,7 +113,9 @@ Details panel labels: Total Size, Items, Files, Subdirs, Size, Allocated, Last M
 | Close all tree levels | Ctrl+W |
 | Expand all tree levels | Shift+F4 |
 | Expand tree to a level | View, Expand Tree to Level, 1 to 9 |
-| Names on treemap tiles | View, Names on Treemap Tiles, on by default |
+| Names on treemap tiles | View, Names on Treemap Tiles, on by default; also in Preferences |
+| Preferences | Ctrl+comma or Edit, Preferences; Reset to Defaults in the dialog resets the file too |
+| Search history | The dropdown after the search box; a search is remembered when the box loses focus |
 | Export to CSV | Ctrl+Alt+E for the whole tree, Export Subtree to CSV in the right-click menu for the selected directory |
 | Copy the tree to the clipboard | Ctrl+Alt+C: the rows as shown, indented |
 | Open directory | Ctrl+O |

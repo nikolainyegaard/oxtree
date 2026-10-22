@@ -1,11 +1,12 @@
-//! Configuration files under `$XDG_CONFIG_HOME/oxtree`. Only cleanups are
-//! stored for now. When OxTree has no cleanups file yet but QDirStat does,
+//! Configuration files under `$XDG_CONFIG_HOME/oxtree`: the settings and
+//! the cleanups. When OxTree has no cleanups file yet but QDirStat does,
 //! QDirStat's is read, since the format is the same.
 
 use std::path::{Path, PathBuf};
 
 use oxtree_core::cleanup::{self, Cleanup};
 use oxtree_core::ini::Ini;
+use oxtree_core::settings::Settings;
 
 pub fn config_dir() -> PathBuf {
     // A root instance started from the app gets the invoking user's
@@ -23,6 +24,30 @@ pub fn config_dir() -> PathBuf {
 
 pub fn cleanups_path() -> PathBuf {
     config_dir().join("cleanups.conf")
+}
+
+pub fn settings_path() -> PathBuf {
+    config_dir().join("settings.conf")
+}
+
+/// The settings file, or the defaults when there is none or it cannot be
+/// read. Never an error: a bad value falls back on its own.
+pub fn load_settings() -> Settings {
+    match std::fs::read_to_string(settings_path()) {
+        Ok(text) => Settings::from_ini(&Ini::parse(&text)),
+        Err(_) => Settings::default(),
+    }
+}
+
+pub fn save_settings(settings: &Settings) -> Result<(), String> {
+    write_ini(&settings_path(), &settings.to_ini())
+}
+
+/// Reset configuration: the defaults, written over the file.
+pub fn reset_settings() -> Result<Settings, String> {
+    let s = Settings::default();
+    save_settings(&s)?;
+    Ok(s)
 }
 
 fn qdirstat_cleanups_path() -> Option<PathBuf> {
@@ -75,6 +100,10 @@ pub fn save_cleanups(cleanups: &[Cleanup]) -> Result<(), String> {
 }
 
 fn save_cleanups_to(path: &Path, cleanups: &[Cleanup]) -> Result<(), String> {
+    write_ini(path, &cleanup::to_ini(cleanups))
+}
+
+fn write_ini(path: &Path, ini: &Ini) -> Result<(), String> {
     if crate::root::is_root() {
         // Written as root, the file would be the user's no longer.
         return Ok(());
@@ -83,7 +112,7 @@ fn save_cleanups_to(path: &Path, cleanups: &[Cleanup]) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("Cannot create {}: {e}", dir.display()))?;
     set_private(dir);
     let tmp = path.with_extension("conf.tmp");
-    std::fs::write(&tmp, cleanup::to_ini(cleanups).to_text())
+    std::fs::write(&tmp, ini.to_text())
         .map_err(|e| format!("Cannot write {}: {e}", tmp.display()))?;
     std::fs::rename(&tmp, path).map_err(|e| format!("Cannot replace {}: {e}", path.display()))
 }

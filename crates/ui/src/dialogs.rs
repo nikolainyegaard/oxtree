@@ -15,7 +15,169 @@ pub fn show(app: &mut OxTreeApp, ctx: &Context) {
     error(app, ctx);
     about(app, ctx);
     export(app, ctx);
+    preferences(app, ctx);
     output(app, ctx);
+}
+
+/// Edit, Preferences: every setting applies as it is changed and the file
+/// is written when the dialog closes.
+fn preferences(app: &mut OxTreeApp, ctx: &Context) {
+    if !app.preferences_open {
+        return;
+    }
+    let mut close = false;
+    let mut reset = false;
+    let mut theme_changed = false;
+    let mut check = false;
+    egui::Modal::new(Id::unique("preferences")).show(ctx, |ui| {
+        ui.set_width(560.0);
+        ui.heading("Preferences");
+        ui.add_space(6.0);
+        egui::Grid::new("preferences-grid")
+            .num_columns(2)
+            .spacing([16.0, 8.0])
+            .show(ui, |ui| {
+                ui.label(egui::RichText::new("Scanning").strong());
+                ui.checkbox(
+                    &mut app.cross_filesystems,
+                    "Cross into other local filesystems",
+                )
+                .on_hover_text("Kernel tables and network mounts stay out either way; off shows one filesystem, the view for which disk is full");
+                ui.end_row();
+
+                ui.label(egui::RichText::new("Treemap").strong());
+                ui.horizontal(|ui| {
+                    let mut ms = app.rebuild_delay.as_millis() as u64;
+                    ui.label("Rebuild delay");
+                    if ui
+                        .add(egui::DragValue::new(&mut ms).range(0..=2000).suffix(" ms"))
+                        .on_hover_text("How long the treemap size has to hold still before a rebuild during a resize; 0 rebuilds every frame, 200 is QDirStat's value for slow machines")
+                        .changed()
+                    {
+                        app.rebuild_delay = std::time::Duration::from_millis(ms);
+                    }
+                    ui.checkbox(&mut app.show_tile_names, "Names on tiles");
+                });
+                ui.end_row();
+
+                ui.label(egui::RichText::new("Tables").strong());
+                ui.horizontal(|ui| {
+                    ui.label("Row height");
+                    ui.add(egui::DragValue::new(&mut app.row_height).range(16.0..=40.0).fixed_decimals(0));
+                    ui.add_space(12.0);
+                    ui.label("Size decimals");
+                    if ui
+                        .add(egui::DragValue::new(&mut app.size_decimals).range(0..=3))
+                        .changed()
+                    {
+                        oxtree_core::format::set_size_decimals(app.size_decimals);
+                    }
+                });
+                ui.end_row();
+
+                ui.label(egui::RichText::new("Appearance").strong());
+                ui.horizontal(|ui| {
+                    use oxtree_core::settings::Theme;
+                    for (t, label) in [
+                        (Theme::System, "Follow the desktop"),
+                        (Theme::Light, "Light"),
+                        (Theme::Dark, "Dark"),
+                    ] {
+                        if ui.radio_value(&mut app.theme, t, label).changed() {
+                            theme_changed = true;
+                        }
+                    }
+                });
+                ui.end_row();
+
+                ui.label(egui::RichText::new("Updates").strong());
+                ui.vertical(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut app.check_updates, "Check automatically")
+                            .on_hover_text("One request to the GitHub releases API through curl, on the schedule next to it; nothing is downloaded. Off, OxTree never touches the network");
+                        let label = match app.check_interval_days {
+                            1 => "daily",
+                            7 => "weekly",
+                            30 => "monthly",
+                            _ => "custom",
+                        };
+                        egui::ComboBox::from_id_salt("update-interval")
+                            .selected_text(label)
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut app.check_interval_days, 1, "daily");
+                                ui.selectable_value(&mut app.check_interval_days, 7, "weekly");
+                                ui.selectable_value(&mut app.check_interval_days, 30, "monthly");
+                            });
+                    });
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(app.update_job.is_none(), egui::Button::new("Check for Updates"))
+                            .clicked()
+                        {
+                            check = true;
+                        }
+                        if app.update_job.is_some() {
+                            ui.spinner();
+                            ui.label("Checking...");
+                        }
+                        match &app.update_result {
+                            Some(oxtree_native::update::UpdateResult::Newer(tag)) => {
+                                ui.label(format!("{tag} is available, this is {}", crate::app::VERSION));
+                                ui.hyperlink_to("Release page", oxtree_native::update::RELEASES_URL);
+                            }
+                            Some(oxtree_native::update::UpdateResult::Current) => {
+                                ui.label(format!("OxTree {} is the latest release", crate::app::VERSION));
+                            }
+                            Some(oxtree_native::update::UpdateResult::Failed(e)) => {
+                                ui.colored_label(crate::theme::DIR_READ_ERROR, e);
+                            }
+                            None => {}
+                        }
+                    });
+                });
+                ui.end_row();
+            });
+        ui.add_space(8.0);
+        ui.label(
+            egui::RichText::new(format!(
+                "Saved to {} when this dialog closes. Column widths, the File View choices and the search history are saved with it.",
+                oxtree_native::config::settings_path().display()
+            ))
+            .weak()
+            .small(),
+        );
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            if ui
+                .button("Reset to Defaults")
+                .on_hover_text("Every setting back to its default, including column widths and the search history")
+                .clicked()
+            {
+                reset = true;
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("Close").clicked()
+                    || ui.input(|i| i.key_pressed(egui::Key::Escape) || i.key_pressed(egui::Key::Enter))
+                {
+                    close = true;
+                }
+            });
+        });
+    });
+    if theme_changed {
+        app.apply_theme(ctx);
+    }
+    if check {
+        app.start_update_check();
+    }
+    if reset {
+        app.reset_settings(ctx);
+    }
+    if close {
+        app.preferences_open = false;
+        app.rows_dirty = true;
+        app.save_settings();
+    }
 }
 
 fn export(app: &mut OxTreeApp, ctx: &Context) {

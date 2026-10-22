@@ -19,6 +19,7 @@ const SUBDIRS: usize = 6;
 const MTIME: usize = 7;
 
 pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
+    let row_h = app.row_height;
     let font = egui::TextStyle::Body.resolve(ui.style());
     // egui's plain label colour is a mid grey meant for non-interactive
     // text; rows are the content here, so they get the strong colour.
@@ -28,10 +29,8 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
     // The header band is reserved here and painted after the rows, since
     // it follows their sideways scroll and the rows' viewport is only known
     // once the scroll area has run.
-    let (header_rect, _) = ui.allocate_exact_size(
-        Vec2::new(ui.available_width(), theme::ROW_HEIGHT),
-        Sense::hover(),
-    );
+    let (header_rect, _) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), row_h), Sense::hover());
 
     // A treemap click earlier in this frame may have expanded ancestors;
     // the jump below has to see the rows as they are now, not as they were
@@ -54,18 +53,17 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
         .id_salt("tree-rows");
     if let Some(i) = scroll_to {
         let spacing = ui.spacing().item_spacing.y;
-        let offset = i as f32 * (theme::ROW_HEIGHT + spacing) - ui.available_height() / 2.0;
+        let offset = i as f32 * (row_h + spacing) - ui.available_height() / 2.0;
         area = area.vertical_scroll_offset(offset.max(0.0));
     }
-    let out = area.show_rows(ui, theme::ROW_HEIGHT, total, |ui, range| {
+    let out = area.show_rows(ui, row_h, total, |ui, range| {
         let Some(tree) = app.tree.clone() else { return };
         let width = columns::row_width(ui, &app.tree_columns);
         for i in range {
             let Some(row) = app.rows.get(i).copied() else {
                 continue;
             };
-            let (rect, _) =
-                ui.allocate_exact_size(Vec2::new(width, theme::ROW_HEIGHT), Sense::hover());
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(width, row_h), Sense::hover());
             let painter = ui.painter_at(rect);
             columns::stripe(ui, &painter, rect, i);
             let left = rect.left();
@@ -98,7 +96,7 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
             // Expand marker and name
             let expandable = tree.child_count(row.node) > 0;
             let marker_rect =
-                Rect::from_center_size(Pos2::new(indent + 6.0, y), Vec2::splat(theme::ROW_HEIGHT));
+                Rect::from_center_size(Pos2::new(indent + 6.0, y), Vec2::splat(row_h));
             if expandable {
                 let open = app.expansion.is_open(row.node);
                 triangle(

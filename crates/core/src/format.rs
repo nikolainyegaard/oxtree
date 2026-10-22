@@ -1,11 +1,21 @@
 //! Text formatting with QDirStat's conventions: `1.5 MB`, `739 Bytes`,
 //! `12.3%`, `rwxr-xr-x`.
 
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 
 const UNITS: [&str; 9] = ["Bytes", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
 
-/// `739 Bytes`, `1.5 MB`: base 1024, one decimal above a kilobyte.
+/// Decimals in `size`, 0 to 3; a setting, applied once at startup and
+/// from the Preferences dialog.
+static SIZE_DECIMALS: AtomicU8 = AtomicU8::new(1);
+
+pub fn set_size_decimals(n: u8) {
+    SIZE_DECIMALS.store(n.min(3), Ordering::Relaxed);
+}
+
+/// `739 Bytes`, `1.5 MB`: base 1024, one decimal above a kilobyte unless
+/// the setting says otherwise.
 pub fn size(bytes: u64) -> String {
     if bytes < 1024 {
         return format!("{bytes} Bytes");
@@ -16,7 +26,8 @@ pub fn size(bytes: u64) -> String {
         v /= 1024.0;
         unit += 1;
     }
-    format!("{v:.1} {}", UNITS.get(unit).copied().unwrap_or("?"))
+    let decimals = SIZE_DECIMALS.load(Ordering::Relaxed) as usize;
+    format!("{v:.decimals$} {}", UNITS.get(unit).copied().unwrap_or("?"))
 }
 
 /// `1 234 567 Bytes`, with thin thousands groups like QDirStat.

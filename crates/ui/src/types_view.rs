@@ -17,14 +17,13 @@ const SIZE: usize = 3;
 const PCT: usize = 4;
 
 pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
+    let row_h = app.row_height;
     app.ensure_types();
     let font = egui::TextStyle::Body.resolve(ui.style());
     let text_color = ui.visuals().strong_text_color();
     let weak = ui.visuals().weak_text_color();
-    let (header_rect, _) = ui.allocate_exact_size(
-        Vec2::new(ui.available_width(), theme::ROW_HEIGHT),
-        Sense::hover(),
-    );
+    let (header_rect, _) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), row_h), Sense::hover());
     let rows = sorted(app);
     let total_size = app
         .tree
@@ -36,12 +35,11 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
     let out = egui::ScrollArea::both()
         .auto_shrink([false, false])
         .id_salt("type-rows")
-        .show_rows(ui, theme::ROW_HEIGHT, rows.len(), |ui, range| {
+        .show_rows(ui, row_h, rows.len(), |ui, range| {
             let width = columns::row_width(ui, &app.types_columns);
             for i in range {
                 let Some(row) = rows.get(i) else { continue };
-                let (rect, _) =
-                    ui.allocate_exact_size(Vec2::new(width, theme::ROW_HEIGHT), Sense::hover());
+                let (rect, _) = ui.allocate_exact_size(Vec2::new(width, row_h), Sense::hover());
                 let resp = ui.interact(
                     rect,
                     ui.scope_id().with(("type-row", row.ext.as_str())),

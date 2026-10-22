@@ -10,6 +10,7 @@ pub mod mounts;
 pub mod root;
 pub mod run;
 pub mod trash;
+pub mod update;
 pub mod walker;
 
 pub use walker::{scan, ScanEvent, ScanHandle, ScanOptions, Wake};

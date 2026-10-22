@@ -72,7 +72,7 @@ Facts behind the walker, so nobody re-derives them:
 - Layout is a traversal because the arena stores children largest first. One scratch `Vec` is reused for rows.
 - Shading splits the pixel rows into one band per thread with `chunks_mut`, each thread walking every tile and clipping to its band. No unsafe, no shared mutation, near-linear scaling.
 - The GPU route (a vertex buffer of rectangles plus cushion coefficients, shading in a fragment shader through a glow paint callback) would make a resize cost layout plus an upload at any window size and remove the texture. Not needed at 7.7 ms for a 1900x600 map; worth it for 4K.
-- During a resize the treemap is rebuilt every frame, one job in flight at a time; the previous texture is drawn at its own pixel size, anchored top left and clipped, never stretched. Measured on a five second resize drag with `OXTREE_STATS=1`: about 55 rebuilds a second at 110 to 135% of one core, idle unaffected. A QDirStat-style settle delay was tried and measured at one rebuild a second and 5 to 9%, and rejected: a drag lasts a second or two, and the per-frame rebuild is what makes the speed visible. `OXTREE_REBUILD_DELAY_MS=200` turns the delay on until it becomes a preference; see the pinned item in gotchas.md. Rebuilds are capped at 120 a second (`TREEMAP_MAX_REBUILD_HZ`) so a 500 Hz display cannot multiply the cost; 120 rather than 60 because a 60 cap skips every other frame on a 60 Hz screen whenever the timer lands early.
+- During a resize the treemap is rebuilt every frame, one job in flight at a time; the previous texture is drawn at its own pixel size, anchored top left and clipped, never stretched. Measured on a five second resize drag with `OXTREE_STATS=1`: about 55 rebuilds a second at 110 to 135% of one core, idle unaffected. A QDirStat-style settle delay was tried and measured at one rebuild a second and 5 to 9%, and rejected: a drag lasts a second or two, and the per-frame rebuild is what makes the speed visible. `[Treemaps] RebuildDelayMillisec=200` in the settings file, or the Preferences dialog, turns the delay on. Rebuilds are capped at 120 a second (`TREEMAP_MAX_REBUILD_HZ`) so a 500 Hz display cannot multiply the cost; 120 rather than 60 because a 60 cap skips every other frame on a 60 Hz screen whenever the timer lands early.
 
 ## Launch
 
@@ -116,17 +116,16 @@ The release profile is `lto = "fat"`, `codegen-units = 1`, `panic = "abort"`, `s
 
 ## Diagnostic switches
 
-Environment variables and flags read at startup, for measuring and for bisecting problems. None of them is a user setting, and apart from `OXTREE_REBUILD_DELAY_MS` none of them exists in a plain release build: they are compiled in with `cargo build --release --features diagnostics`, which also builds the `oxtree-bench` binary. A plain build answers `--screenshot` with one line saying it needs that feature.
+Environment variables and flags read at startup, for measuring and for bisecting problems. None of them is a user setting, and none of them exists in a plain release build: they are compiled in with `cargo build --release --features diagnostics`, which also builds the `oxtree-bench` binary. A plain build answers `--screenshot` with one line saying it needs that feature.
 
 | Switch | Effect |
 |--------|--------|
 | `OXTREE_STATS=1` | Prints treemap rebuild counts and process CPU time once a second to stderr |
-| `OXTREE_REBUILD_DELAY_MS=200` | Waits for the treemap size to settle before rebuilding (QDirStat's behaviour); default 0 |
 | `OXTREE_STARTUP=1` | Prints the startup stages, about ten lines, each with the time since the previous one; `OXTREE_T0=$(date +%s%N)` on the same command line adds the exec and loader time |
 | `OXTREE_STARTUP=2` | The stages plus every log record from eframe, winit, glutin and the Wayland client that followed a gap of a quarter millisecond or more |
 | `OXTREE_STARTUP=/path/to/file` | Everything, some 2 500 lines, written to that file instead of the terminal |
 | `--screenshot FILE.ppm` | Writes the first full frame and prints its minimum alpha and translucent pixel count to stderr; must say `min 255` |
-| `oxtree-bench PATH` | Scan, layout, render, cache and search timings for one tree, to stdout |
+| `oxtree-bench PATH` | Scan, layout, render, cache, types, duplicates, CSV and search timings for one tree, to stdout; `OXTREE_CROSS_FILESYSTEMS=0` keeps the scan on one filesystem |
 
 ## Dead ends
 
