@@ -6,6 +6,8 @@ pub mod cache_io;
 pub mod config;
 pub mod dialog;
 pub mod localtime;
+pub mod meta;
+pub mod mft;
 pub mod mounts;
 pub mod root;
 pub mod run;

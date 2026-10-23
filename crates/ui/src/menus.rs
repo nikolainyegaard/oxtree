@@ -118,15 +118,14 @@ fn open_dialog(app: &mut OxTreeApp) {
             .scan_path
             .as_ref()
             .map(|p| p.to_string_lossy().into_owned())
-            .or_else(|| std::env::var("HOME").ok())
-            .unwrap_or_else(|| "/".into());
+            .unwrap_or_else(oxtree_native::config::home_dir);
         app.open_dir_text = Some(start);
     }
 }
 
 fn open_export(app: &mut OxTreeApp, root: Option<u32>) {
     let Some(root) = root else { return };
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    let home = oxtree_native::config::home_dir();
     let name = app
         .tree
         .as_ref()
@@ -571,7 +570,7 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
 }
 
 fn default_cache_path(app: &OxTreeApp) -> String {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    let home = oxtree_native::config::home_dir();
     let name = app
         .scan_path
         .as_ref()

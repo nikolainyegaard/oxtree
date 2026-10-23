@@ -9,7 +9,6 @@
 //! per-worker deque with stealing is the next step if the mutex ever shows
 //! up in a profile.
 
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -18,6 +17,7 @@ use std::time::{Duration, Instant};
 
 use oxtree_core::{DirRecord, FileRecord, Kind, Tree};
 
+use crate::meta;
 use crate::mounts::MountTable;
 
 #[derive(Clone, Debug)]
@@ -169,7 +169,31 @@ fn run_scan(
             return;
         }
     };
-    let root_dev = root_md.dev();
+    // On Windows an NTFS volume is read from its MFT instead of walked;
+    // anything else, or no administrator rights, falls through to the walk.
+    let mut last_report = Instant::now();
+    let mut report = |items: usize, bytes: u64| {
+        if last_report.elapsed() >= Duration::from_millis(333) {
+            last_report = Instant::now();
+            send(ScanEvent::Progress {
+                dirs: 0,
+                items,
+                bytes,
+            });
+        }
+    };
+    if let Some(result) = crate::mft::scan(&root, &cancel, &mut report) {
+        match result {
+            Ok(tree) => send(ScanEvent::Done {
+                tree: Box::new(tree),
+                elapsed: started.elapsed(),
+                unreadable: 0,
+            }),
+            Err(e) => send(ScanEvent::Failed(e)),
+        }
+        return;
+    }
+    let root_dev = meta::dev(&root_md);
     let threads = if options.threads == 0 {
         std::thread::available_parallelism()
             .map(|n| n.get())
@@ -323,9 +347,9 @@ fn read_dir(shared: &Shared, options: &ScanOptions, job: &Job) -> DirRead {
         ..Default::default()
     };
     if let Ok(md) = std::fs::symlink_metadata(&job.path) {
-        record.mtime = md.mtime();
-        record.mode = md.mode();
-        record.own_size = md.blocks() * 512;
+        record.mtime = meta::mtime(&md);
+        record.mode = meta::mode(&md);
+        record.own_size = meta::allocated(&md);
     }
     let mut read = DirRead {
         record,
@@ -346,7 +370,7 @@ fn read_dir(shared: &Shared, options: &ScanOptions, job: &Job) -> DirRead {
             let id = shared.next_id.fetch_add(1, Ordering::Relaxed);
             read.record.subdirs.push(id);
             let excluded = options.exclude_names.contains(&entry_name);
-            let boundary = md.dev() != job.dev;
+            let boundary = meta::dev(&md) != job.dev;
             let other_fs = boundary
                 && !(options.cross_filesystems && options.mounts.should_enter(&entry.path()));
             if excluded || other_fs {
@@ -360,9 +384,9 @@ fn read_dir(shared: &Shared, options: &ScanOptions, job: &Job) -> DirRead {
                     DirRecord {
                         parent: Some(job.id),
                         name: entry_name,
-                        mtime: md.mtime(),
-                        mode: md.mode(),
-                        own_size: md.blocks() * 512,
+                        mtime: meta::mtime(&md),
+                        mode: meta::mode(&md),
+                        own_size: meta::allocated(&md),
                         kind: Some(kind),
                         ..Default::default()
                     },
@@ -372,7 +396,7 @@ fn read_dir(shared: &Shared, options: &ScanOptions, job: &Job) -> DirRead {
                     path: entry.path(),
                     id,
                     parent: job.id,
-                    dev: md.dev(),
+                    dev: meta::dev(&md),
                 });
             }
         } else {
@@ -387,15 +411,15 @@ fn read_dir(shared: &Shared, options: &ScanOptions, job: &Job) -> DirRead {
             // gets an equal share, so the totals add up to one copy
             // whichever link the walk met first; QDirStat does the same.
             let links = if kind == Kind::File {
-                md.nlink().max(1)
+                meta::nlink(&md).max(1)
             } else {
                 1
             };
             read.record.files.push(FileRecord {
                 name: entry_name,
-                size: md.blocks() * 512 / links,
-                mtime: md.mtime(),
-                mode: md.mode(),
+                size: meta::allocated(&md) / links,
+                mtime: meta::mtime(&md),
+                mode: meta::mode(&md),
                 kind,
             });
         }
@@ -417,7 +441,10 @@ mod tests {
         std::fs::write(dir.join("a/mid.bin"), vec![0u8; 70_000]).unwrap();
         std::fs::write(dir.join("a/b/deep"), vec![0u8; 1000]).unwrap();
         std::fs::write(dir.join(".snapshot/x/hidden"), vec![0u8; 1000]).unwrap();
+        #[cfg(unix)]
         std::os::unix::fs::symlink("top.txt", dir.join("link")).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file("top.txt", dir.join("link")).unwrap();
         std::fs::hard_link(dir.join("a/mid.bin"), dir.join("a/b/mid-link.bin")).unwrap();
 
         let (tree, _) = scan_blocking(

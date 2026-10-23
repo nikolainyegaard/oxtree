@@ -34,7 +34,7 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 
 | WizTree feature | Status | OxTree today | What closing it touches |
 |---|---|---|---|
-| Read the NTFS Master File Table directly | N/A | Linux has no MFT; ext4 inodes carry no names, btrfs tree search needs root. Recorded as a dead end in gotchas.md | Nothing; the parallel walk is the Linux answer and scans /usr in about 110 ms |
+| Read the NTFS Master File Table directly | Done (Windows) | `crates/native/src/mft.rs`: the volume is opened raw as `\\.\C:`, `$MFT` is streamed record by record, names and parents come from `$FILE_NAME`, sizes from the unnamed `$DATA`, hard links share their size, junctions show as mount points. Tested on Linux against a mkntfs image. Linux has no MFT; ext4 inodes carry no names, btrfs tree search needs root | Untested on a real Windows volume as of 2026-10-23 |
 | Multi-threaded directory scan (the WizTreeMac path) | Done | One worker per core over a shared queue, stat relative to the directory handle | |
 | Scan a whole drive or a single folder | Done | Any directory from the command line or Open Directory; without an argument the home directory, a chosen directory, or the dialog, by the launch setting | |
 | Scan several drives or folders at once, custom folder list | Missing | One root per window | A virtual root with several children in the arena; Open Directory taking several paths |
@@ -188,7 +188,12 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 
 ## Ports
 
-Pinned, not scheduled. Nothing outside `crates/native` touches the operating system, so a port is one crate's worth of branches.
+Built 2026-10-23, untested on real machines. Nothing outside `crates/native` touches the operating system, so each port is one crate's worth of `cfg` branches; the core changes were the path separator in `Tree::path` and `cache.rs`, and `cmd` quoting and commands in `cleanup.rs`. CI compiles both targets on every push (`ports` job in ci.yml) and the release workflow ships a universal macOS app bundle and a Windows zip.
+
+- **Windows.** The MFT reader is in; the binary's manifest requests administrator rights so the raw volume opens. Anything that is not a drive letter with NTFS on it falls back to the walk, which on Windows rounds sizes to 4 KiB clusters and counts no hard links. Trash through PowerShell's `FileSystem::DeleteFile` with `SendToRecycleBin`, the folder picker through `FolderBrowserDialog`, the time zone through `TimeZoneInfo`, free space through `fsutil volume diskfree`. Cleanups run under `cmd /C`; only Open File Manager and Open Terminal are in the standard set. The GUI subsystem means `--export -` prints nothing on Windows; `--export FILE` works. Still missing: the executable's icon (needs a resource compiler step), Update Now (the install is `Other`, so the link), code signing.
+- **macOS.** `mount` and `df -k` for the volume list, `osascript` for the folder chooser, Finder's trash and the administrator prompt behind Rescan as Root, `open` for the terminal and file manager. Everything else was portable already. The bundle is signed ad hoc, so Gatekeeper asks for a quarantine removal; notarisation needs a developer account. Update Now is the link.
+
+The earlier reasoning, kept for the record:
 
 - **Windows, only with an MFT reader.** A directory walk on NTFS would land in WinDirStat territory and lose to WizTree on the one number its users care about, so a Windows build is worth doing only with WizTree's approach: read the volume raw through `\\.\C:` with administrator rights, parse the MFT (boot sector, `$MFT` data runs, file records, `$FILE_NAME` and `$DATA` attributes, attribute lists, hard links) and assemble the tree from parent references. That is a project of its own, a few thousand lines plus a corpus of real volumes, and it needs `unsafe` for the raw handle, which the workspace forbids today; the ordinary walk stays for exFAT, ReFS and network shares, as WizTree's own fallback does. Everything above the native crate, the arena, the treemap, the views, the search and the cache files, is already platform-agnostic.
 - **macOS, a native branch of the same crate.** The walk, the shell cleanups, gzip and date work unchanged. Mounts come from `mount` or `getmntinfo`, trash and the directory chooser through `osascript`, the terminal and file manager are Terminal.app and `open -R`. WizTreeMac has no MFT either and scans with bulk directory enumeration on threads, which is what OxTree does.

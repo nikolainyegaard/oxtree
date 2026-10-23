@@ -362,7 +362,7 @@ fn open_directory(app: &mut OxTreeApp, ctx: &Context) {
             return;
         }
         let expanded = if let Some(rest) = path.strip_prefix("~") {
-            format!("{}{rest}", std::env::var("HOME").unwrap_or_default())
+            format!("{}{rest}", oxtree_native::config::home_dir())
         } else {
             path.to_string()
         };

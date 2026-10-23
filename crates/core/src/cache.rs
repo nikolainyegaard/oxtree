@@ -86,7 +86,7 @@ pub fn parse(text: &str) -> Result<(String, Vec<DirRecord>), String> {
         };
 
         if kind == Kind::Dir {
-            if !path.starts_with('/') {
+            if !is_absolute(&path) {
                 return Err(format!("line {}: directory without absolute path", i + 1));
             }
             let parent = if dirs.is_empty() {
@@ -104,7 +104,7 @@ pub fn parse(text: &str) -> Result<(String, Vec<DirRecord>), String> {
             let name = if parent.is_none() {
                 path.clone()
             } else {
-                path.rsplit('/').next().unwrap_or("").to_string()
+                path.rsplit(['/', '\\']).next().unwrap_or("").to_string()
             };
             dirs.push(DirRecord {
                 parent,
@@ -203,11 +203,18 @@ fn write_dir(tree: &Tree, dir: u32, out: &mut String) {
 }
 
 fn parent_of(path: &str) -> &str {
-    match path.rfind('/') {
+    match path.rfind(['/', '\\']) {
         Some(0) => "/",
+        // `C:\x` has the parent `C:\`, with its separator.
+        Some(2) if path.as_bytes().get(1) == Some(&b':') => path.get(..3).unwrap_or("/"),
         Some(i) => path.get(..i).unwrap_or("/"),
         None => "/",
     }
+}
+
+/// A Unix path from the root, or a Windows path from a drive letter.
+fn is_absolute(path: &str) -> bool {
+    path.starts_with('/') || (path.as_bytes().get(1) == Some(&b':') && path.len() >= 3)
 }
 
 fn parse_size(s: &str) -> Option<u64> {

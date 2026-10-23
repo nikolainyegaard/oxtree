@@ -1,23 +1,44 @@
 //! Move files to the desktop trash through `gio trash`, which implements the
-//! freedesktop trash specification for every desktop. Running it keeps the
+//! freedesktop trash specification for every desktop; through Finder on
+//! macOS and the Recycle Bin on Windows. Running a helper keeps the
 //! implementation and its edge cases (other filesystems, trash directories
 //! per mount) out of this binary.
 
 use std::process::Command;
 
 pub fn move_to_trash(path: &str) -> Result<(), String> {
-    let output = Command::new("gio")
-        .arg("trash")
-        .arg("--")
-        .arg(path)
-        .output()
-        .map_err(|e| format!("Cannot run gio: {e}"))?;
+    let output = if cfg!(target_os = "macos") {
+        Command::new("osascript")
+            .args(["-e", "on run argv"])
+            .args([
+                "-e",
+                "tell application \"Finder\" to delete (POSIX file (item 1 of argv) as alias)",
+            ])
+            .args(["-e", "end run"])
+            .arg(path)
+            .output()
+            .map_err(|e| format!("Cannot run osascript: {e}"))?
+    } else if cfg!(windows) {
+        Command::new("powershell")
+            .args(["-NoProfile", "-Command"])
+            .arg("Add-Type -AssemblyName Microsoft.VisualBasic; $p = $env:OXTREE_PATH; if (Test-Path -LiteralPath $p -PathType Container) { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p, 'OnlyErrorDialogs', 'SendToRecycleBin') } else { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p, 'OnlyErrorDialogs', 'SendToRecycleBin') }")
+            .env("OXTREE_PATH", path)
+            .output()
+            .map_err(|e| format!("Cannot run powershell: {e}"))?
+    } else {
+        Command::new("gio")
+            .arg("trash")
+            .arg("--")
+            .arg(path)
+            .output()
+            .map_err(|e| format!("Cannot run gio: {e}"))?
+    };
     if output.status.success() {
         return Ok(());
     }
     let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
     Err(if err.is_empty() {
-        format!("gio trash failed for {path}")
+        format!("Moving {path} to the trash failed")
     } else {
         err
     })

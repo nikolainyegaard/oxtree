@@ -1,4 +1,5 @@
-//! Configuration files under `$XDG_CONFIG_HOME/oxtree`: the settings and
+//! Configuration files under `$XDG_CONFIG_HOME/oxtree` (`%APPDATA%\\oxtree`
+//! on Windows): the settings and
 //! the cleanups. When OxTree has no cleanups file yet but QDirStat does,
 //! QDirStat's is read, since the format is the same.
 
@@ -14,12 +15,22 @@ pub fn config_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("OXTREE_CONFIG_DIR") {
         return PathBuf::from(dir);
     }
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
-        .unwrap_or_else(|| PathBuf::from("."));
-    base.join("oxtree")
+    let base = if cfg!(windows) {
+        std::env::var_os("APPDATA").map(PathBuf::from)
+    } else {
+        std::env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+    };
+    base.unwrap_or_else(|| PathBuf::from(".")).join("oxtree")
+}
+
+/// The user's home directory: `$HOME`, or `%USERPROFILE%` on Windows.
+pub fn home_dir() -> String {
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_else(|_| if cfg!(windows) { "C:\\" } else { "/" }.into())
 }
 
 pub fn cleanups_path() -> PathBuf {
@@ -28,6 +39,12 @@ pub fn cleanups_path() -> PathBuf {
 
 /// Where Update Now keeps a downloaded package until it is installed.
 pub fn cache_dir() -> PathBuf {
+    if cfg!(windows) {
+        return std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir)
+            .join("oxtree");
+    }
     std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
@@ -114,7 +131,7 @@ fn save_cleanups_to(path: &Path, cleanups: &[Cleanup]) -> Result<(), String> {
 }
 
 fn write_ini(path: &Path, ini: &Ini) -> Result<(), String> {
-    if crate::root::is_root() {
+    if cfg!(unix) && crate::root::is_root() {
         // Written as root, the file would be the user's no longer.
         return Ok(());
     }
@@ -127,6 +144,7 @@ fn write_ini(path: &Path, ini: &Ini) -> Result<(), String> {
     std::fs::rename(&tmp, path).map_err(|e| format!("Cannot replace {}: {e}", path.display()))
 }
 
+#[cfg(unix)]
 fn set_private(dir: &std::path::Path) {
     use std::os::unix::fs::PermissionsExt;
     if let Ok(md) = std::fs::metadata(dir) {
@@ -135,6 +153,10 @@ fn set_private(dir: &std::path::Path) {
         let _ = std::fs::set_permissions(dir, perms);
     }
 }
+
+/// `%APPDATA%` is the user's own already.
+#[cfg(not(unix))]
+fn set_private(_dir: &std::path::Path) {}
 
 #[cfg(test)]
 mod tests {

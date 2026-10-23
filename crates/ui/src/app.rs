@@ -513,7 +513,7 @@ impl OxTreeApp {
         if let Some(n) = note {
             app.set_status(n, false);
         }
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());
+        let home = oxtree_native::config::home_dir();
         if let Some(c) = cache {
             app.read_cache(c);
         } else if let Some(p) = start {
@@ -1983,7 +1983,10 @@ impl OxTreeApp {
         if self.dir_picker.is_some() {
             return;
         }
-        let start = self.open_dir_text.clone().unwrap_or_else(|| "/".into());
+        let start = self
+            .open_dir_text
+            .clone()
+            .unwrap_or_else(oxtree_native::config::home_dir);
         self.dir_picker = Some(oxtree_native::dialog::pick_directory(&start, &self.desktop));
     }
 }

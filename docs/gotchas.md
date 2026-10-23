@@ -53,9 +53,20 @@ Dated notes on things that look wrong until you know why, and on dead ends. Add 
 - **Column widths include their padding.** `Columns::text_right` is the right edge minus 4 points; the percent bar runs between the paddings. The three tables share `columns::header`, which also owns the drag handles; a dragged width is a plain `f32` in `OxTreeApp`, reset by the Reset button and lost with the window until the settings file exists.
 - **The Reset button is an eraser, not an arrow.** A circular arrow reads as Refresh, which F5 already is; the eraser says "clear". Painted, like the tree icons.
 
+## 2026-10-23, Windows and macOS
+
+- **The MFT reader needs no `unsafe`.** `std::fs::File::open(r"\\.\C:")` opens the raw volume with the default share mode, and reads work as long as offset and length are whole sectors; the reader only ever reads whole clusters, and the boot sector as 4 KiB. The `unsafe_code = "forbid"` lint stays.
+- **MFT records are streamed, not loaded.** `$MFT` is a gigabyte on a volume with a million files; the reader keeps one `Entry` per record (about 80 bytes plus the name) and 4 MiB of buffer. Extension records (`base_record != 0`) write their `$DATA` size into the base entry whichever order they come in, so sizes are only ever set, never reset.
+- **Resident files count their bytes.** A file small enough to live inside its MFT record has no allocation of its own; its value length is used so tiny files are not all zero. WizTree shows the same figure as "size".
+- **The NTFS test image** is `crates/native/testdata/ntfs.img.xz`, 16 MiB made with `mkntfs -F -Q`, mounted through `udisksctl loop-setup` and `udisksctl mount` (a desktop user may; plain `ntfs-3g` may not), filled with directories, a hard link, a symlink and 400 small files, then zero-filled with `dd if=/dev/zero of=fill` and `rm fill` before unmounting so it compresses to 98 KB. `xz -9` on it; gzip stays three times larger. The test skips where `xz` is not on the path.
+- **Windows always runs elevated.** The manifest in `packaging/oxtree.manifest` is embedded through `build.rs` with `/MANIFEST:EMBED /MANIFESTINPUT:`, so `root::is_root()` is true there and Rescan as Root is never offered. `write_ini`'s "never write as root" guard is Unix-only for that reason.
+- **The GUI subsystem swallows stdout on Windows.** `--export -` prints nothing; the diagnostics build keeps the console subsystem for its prints.
+- **The fixed-size Windows walk is the fallback, not the product.** `meta.rs` rounds `file_size` to 4 KiB and counts one link per file, because `std` has no allocated size or link count without `by_handle` calls. Only exFAT, network shares and a failed volume open get it.
+- **Local cross-checks are not possible on Fedora's rustc.** The system toolchain has no `rustup target add`; the `ports` CI job is the compile check for both targets.
+
 ## Pinned, ports
 
-- **Windows needs the MFT reader or nothing.** Decided 2026-10-22: a Windows build without reading the NTFS Master File Table would be slower than WizTree by an order of magnitude and is not worth shipping. The reader is its own project; see the Ports section of `docs/wiztree-parity.md`. macOS is a native-crate branch and could go first.
+- **Windows needs the MFT reader or nothing.** Built 2026-10-23, see above. Decided 2026-10-22: a Windows build without reading the NTFS Master File Table would be slower than WizTree by an order of magnitude and is not worth shipping. The reader is its own project; see the Ports section of `docs/wiztree-parity.md`. macOS is a native-crate branch and could go first.
 
 ## 2026-10-22, settings
 

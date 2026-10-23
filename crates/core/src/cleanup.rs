@@ -91,12 +91,25 @@ impl Cleanup {
 
 /// Single-quote a string for the shell. A quote inside becomes `'\''`, the
 /// only way `sh` accepts one.
+#[cfg(not(windows))]
 pub fn quoted(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
+/// Double-quote a string for `cmd`; a Windows path cannot contain `"`.
+#[cfg(windows)]
+pub fn quoted(s: &str) -> String {
+    format!("\"{s}\"")
+}
+
 /// Terminal and file manager commands for a desktop, QDirStat's table.
 pub fn desktop_apps(desktop: &str) -> (&'static str, &'static str) {
+    if cfg!(target_os = "macos") {
+        return ("open -a Terminal %d", "open");
+    }
+    if cfg!(windows) {
+        return ("start \"\" cmd /K cd /d %d", "explorer");
+    }
     let d = desktop.to_lowercase();
     if d.contains("kde") {
         ("konsole --workdir %d", "xdg-open")
@@ -126,6 +139,12 @@ pub fn standard() -> Vec<Cleanup> {
     c.output = OutputPolicy::Never;
     c.hotkey = "Ctrl+T".into();
     v.push(c);
+
+    // The rest are shell commands; cmd has none of them. Trash covers
+    // deleting on Windows.
+    if cfg!(windows) {
+        return v;
+    }
 
     let mut c = Cleanup::new("Check File T&ype", "file %n | sed -e 's/[:,] /\\n  /g'");
     c.works_for_dir = false;

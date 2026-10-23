@@ -16,6 +16,9 @@ pub enum RunEvent {
 /// The shell for cleanups: the one the cleanup names, else `$SHELL`, else
 /// bash, else sh. Only executables are accepted.
 pub fn choose_shell(preferred: &str) -> Option<String> {
+    if cfg!(windows) {
+        return Some("cmd".into());
+    }
     let mut candidates: Vec<String> = Vec::new();
     if !preferred.is_empty() {
         candidates.push(preferred.to_string());
@@ -35,7 +38,7 @@ pub fn choose_shell(preferred: &str) -> Option<String> {
 pub fn run(shell: &str, command: &str, dir: &str) -> Receiver<RunEvent> {
     let (tx, rx) = mpsc::channel();
     let child = Command::new(shell)
-        .arg("-c")
+        .arg(if cfg!(windows) { "/C" } else { "-c" })
         .arg(command)
         .current_dir(dir)
         .stdin(Stdio::null())
@@ -85,6 +88,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(unix)]
     fn streams_both_outputs_and_exit_code() {
         let shell = choose_shell("").unwrap();
         let rx = run(&shell, "echo out; echo err 1>&2; exit 3", "/");

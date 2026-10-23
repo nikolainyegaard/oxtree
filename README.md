@@ -26,7 +26,13 @@ QDirStat does more: package views, file age and size statistics, editors for cle
 
 ## Install
 
-Each release on the [releases page](https://github.com/nikolainyegaard/oxtree/releases) has, for x86_64 and aarch64: a tarball with the binary, a `.deb`, an `.rpm` and an AppImage. All are built against glibc 2.28, so they run on RHEL 8, Debian 10, Ubuntu 18.10 and anything newer. The packages install the desktop entry, the icon and the polkit action for Rescan as Root; the tarball and the AppImage work from anywhere, and Rescan as Root then goes through polkit's generic prompt. Only Fedora on x86_64 has been tested by the author; reports from elsewhere are welcome.
+Each release on the [releases page](https://github.com/nikolainyegaard/oxtree/releases) has, for x86_64 and aarch64 Linux: a tarball with the binary, a `.deb`, an `.rpm` and an AppImage. All are built against glibc 2.28, so they run on RHEL 8, Debian 10, Ubuntu 18.10 and anything newer. The packages install the desktop entry, the icon and the polkit action for Rescan as Root; the tarball and the AppImage work from anywhere, and Rescan as Root then goes through polkit's generic prompt. Only Fedora on x86_64 has been tested by the author; reports from elsewhere are welcome.
+
+For macOS there is a zip with a universal app bundle. It is signed ad hoc, not notarised, so the first launch needs the quarantine mark removed with `xattr -d com.apple.quarantine OxTree.app` or an Open Anyway under System Settings, Privacy & Security.
+
+For Windows there is a zip with the executable. It asks for administrator rights at start: an NTFS volume is read from its Master File Table, the way WizTree does, which needs them. Without an NTFS volume (exFAT, a network share) it walks the directories instead. The executable is unsigned, so SmartScreen asks once.
+
+The macOS and Windows builds are new and have had little testing; the Linux build is the one the author uses.
 
 ## Build
 
@@ -36,7 +42,7 @@ Rust 1.88 or newer and a working OpenGL driver.
 cargo build --release
 ```
 
-The binary is `target/release/oxtree`, about 9 MB, with no dependencies beyond the system's C library and Mesa.
+The binary is `target/release/oxtree`, about 9 MB, with no dependencies beyond the system's C library and Mesa. The same command builds on macOS and Windows.
 
 ## Use
 

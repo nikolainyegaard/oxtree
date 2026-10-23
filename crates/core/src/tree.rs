@@ -420,13 +420,23 @@ impl Tree {
             }
         }
         let mut out = self.root_path.clone();
+        let sep = self.separator();
         for part in parts.iter().rev() {
-            if !out.ends_with('/') {
-                out.push('/');
+            if !out.ends_with(sep) {
+                out.push(sep);
             }
             out.push_str(part);
         }
         out
+    }
+
+    /// `\\` below a Windows drive root, `/` everywhere else.
+    fn separator(&self) -> char {
+        if self.root_path.as_bytes().get(1) == Some(&b':') {
+            '\\'
+        } else {
+            '/'
+        }
     }
 
     /// The node for a full path as `path()` produces it, or `None`. Used to
@@ -434,7 +444,7 @@ impl Tree {
     pub fn find(&self, path: &str) -> Option<NodeId> {
         let rest = path.strip_prefix(self.root_path.as_str())?;
         let mut cur: NodeId = 0;
-        for part in rest.split('/').filter(|p| !p.is_empty()) {
+        for part in rest.split(['/', '\\']).filter(|p| !p.is_empty()) {
             cur = self.child_named(cur, part)?;
         }
         Some(cur)
@@ -448,7 +458,7 @@ impl Tree {
             if let Some(n) = self.find(p) {
                 return n;
             }
-            match p.rfind('/') {
+            match p.rfind(['/', '\\']) {
                 Some(i) if i > 0 => p = p.get(..i).unwrap_or(""),
                 _ => return 0,
             }

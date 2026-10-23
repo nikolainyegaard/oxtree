@@ -1,9 +1,10 @@
 name: release
 
-# On a version tag: build for x86_64 and aarch64 against glibc 2.28, so the
-# binaries run on RHEL 8, Debian 10, Ubuntu 18.10 and anything newer; pack
-# each as a tarball, a .deb, an .rpm and an AppImage; attach them all to a
-# GitHub release with the changelog section as its notes.
+# On a version tag: build Linux for x86_64 and aarch64 against glibc 2.28,
+# so the binaries run on RHEL 8, Debian 10, Ubuntu 18.10 and anything
+# newer; pack each as a tarball, a .deb, an .rpm and an AppImage. Build a
+# universal macOS app bundle and a Windows zip. Attach them all to a GitHub
+# release with the changelog section as its notes.
 
 on:
   push:
@@ -71,8 +72,55 @@ jobs:
           name: dist-${{ matrix.arch }}
           path: dist/*
 
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Build both architectures
+        run: |
+          cargo build --release --target aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+      - name: Version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      - name: Bundle
+        run: |
+          APP=OxTree.app
+          mkdir -p dist "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          lipo -create -output "$APP/Contents/MacOS/oxtree" target/aarch64-apple-darwin/release/oxtree target/x86_64-apple-darwin/release/oxtree
+          sed "s/0\.0\.0/${VERSION}/g" packaging/Info.plist > "$APP/Contents/Info.plist"
+          cp packaging/oxtree.icns "$APP/Contents/Resources/oxtree.icns"
+          codesign --force --deep --sign - "$APP"
+          ditto -c -k --keepParent "$APP" "dist/OxTree-${VERSION}-macos.zip"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-macos
+          path: dist/*
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release
+      - name: Zip
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart("v")
+          New-Item -ItemType Directory dist, stage | Out-Null
+          Copy-Item target/release/oxtree.exe, README.md, LICENSE, NOTICE, CHANGELOG.md stage/
+          Compress-Archive -Path stage/* -DestinationPath "dist/OxTree-$version-windows-x86_64.zip"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-windows
+          path: dist/*
+
   release:
-    needs: build
+    needs: [build, macos, windows]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -90,7 +138,8 @@ jobs:
             on && /^## \[/ { exit }
             on { print }
           ' CHANGELOG.md > notes.md
-          printf '\nBinaries are built against glibc %s. The aarch64 builds are untested; please report what you find.\n' "$GLIBC" >> notes.md
+          printf '\nLinux binaries are built against glibc %s. The aarch64 builds are untested; please report what you find.\n' "$GLIBC" >> notes.md
+          printf '\nThe macOS app is a universal binary, signed ad hoc only: on first launch, remove the quarantine mark with `xattr -d com.apple.quarantine OxTree.app` or allow it under System Settings, Privacy & Security. The Windows build asks for administrator rights at start, which reading the volume directly needs; it is unsigned, so SmartScreen will ask once.\n' >> notes.md
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}

@@ -5,7 +5,7 @@ OxTree is a Cargo workspace with four layers. Dependencies point downwards only;
 ```
 apps/oxtree          the binary: arguments, the eframe window, --files, --types, --search, the headless --export; with --features diagnostics also diagnostics.rs (startup timing, --screenshot) and the oxtree-bench binary
 crates/ui            egui views, theme tokens, application state (oxtree-ui)
-crates/native        filesystem walk, child processes, config paths, cache files on disk (oxtree-native)
+crates/native        filesystem walk, NTFS MFT reader, child processes, config paths, cache files on disk (oxtree-native)
 crates/core          pure logic, no I/O: tree arena, layout, shading, categories, cleanups, formats (oxtree-core)
 ```
 
@@ -58,16 +58,18 @@ crates/core/tests/fixtures/
   qdirstat-cache-v2.txt    the documented example cache file
 crates/native/src/
   lib.rs
-  walker.rs                parallel scan on a shared queue, progress events, cancel
-  run.rs                   shell -c with streamed stdout and stderr
-  trash.rs                 gio trash
-  dialog.rs                kdialog or zenity directory chooser
-  config.rs                XDG config dir, settings and cleanups files, QDirStat fallback
+  walker.rs                parallel scan on a shared queue, progress events, cancel; hands NTFS volumes to mft.rs
+  mft.rs                   NTFS Master File Table reader: raw volume, record stream, tree from parent references
+  meta.rs                  the five metadata fields the walker needs, per platform
+  run.rs                   shell -c (cmd /C on Windows) with streamed stdout and stderr
+  trash.rs                 gio trash; Finder on macOS, the Recycle Bin through PowerShell on Windows
+  dialog.rs                kdialog or zenity directory chooser; osascript on macOS, FolderBrowserDialog on Windows
+  config.rs                config dir (XDG, %APPDATA%), home dir, settings and cleanups files, QDirStat fallback
   update.rs                the opt-in release check through curl, install detection, Update Now per install method
   cache_io.rs              cache files on disk, gzip through the system binary
-  localtime.rs             date +%z once
-  mounts.rs                /proc/self/mounts, df for volume sizes and free space, which filesystems a scan may cross into
-  root.rs                  effective uid, second instance as root through pkexec
+  localtime.rs             date +%z once; TimeZoneInfo through PowerShell on Windows
+  mounts.rs                /proc/self/mounts, mount on macOS, drive letters on Windows; df or fsutil for sizes and free space
+  root.rs                  effective uid, second instance as root through pkexec or osascript; Windows is always elevated
 crates/ui/src/
   lib.rs
   app.rs                   OxTreeApp state, pump(), actions, row flattening, treemap jobs

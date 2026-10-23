@@ -282,6 +282,7 @@ fn update_blocking(
             std::fs::copy(&file, &staged)
                 .map_err(|e| format!("Cannot write next to the AppImage: {e}"))?;
             let _ = std::fs::remove_file(&file);
+            #[cfg(unix)]
             let _ = std::fs::set_permissions(
                 &staged,
                 std::os::unix::fs::PermissionsExt::from_mode(0o755),

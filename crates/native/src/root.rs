@@ -1,7 +1,8 @@
 //! Running as root, and replacing this instance with one running as root
-//! through polkit. Linux has no way to raise a running process's
-//! privileges, so "the full picture" is another process: `pkexec oxtree
-//! PATH`, as QDirStat documents with sudo or pkexec. The root instance gets
+//! through polkit (`osascript` with administrator privileges on macOS).
+//! Unix has no way to raise a running process's privileges, so "the full
+//! picture" is another process: `pkexec oxtree PATH`, as QDirStat
+//! documents with sudo or pkexec. Windows instances are always elevated. The root instance gets
 //! the invoking user's display and config directory through the
 //! environment and never writes configuration, so nothing ends up owned by
 //! root. Once it has drawn its first frame it touches a ready file, and the
@@ -12,15 +13,25 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 
-/// The effective user id from /proc/self/status, without libc.
+/// The effective user id from /proc/self/status, without libc; from `id
+/// -u` on macOS. `None` on Windows.
 pub fn effective_uid() -> Option<u32> {
+    if cfg!(windows) {
+        return None;
+    }
+    if cfg!(target_os = "macos") {
+        let out = Command::new("id").arg("-u").output().ok()?;
+        return String::from_utf8_lossy(&out.stdout).trim().parse().ok();
+    }
     let status = std::fs::read_to_string("/proc/self/status").ok()?;
     let line = status.lines().find(|l| l.starts_with("Uid:"))?;
     line.split_whitespace().nth(2)?.parse().ok()
 }
 
+/// Root on Unix. On Windows the manifest makes every instance run as
+/// administrator, which the MFT reader needs, so this is always true.
 pub fn is_root() -> bool {
-    effective_uid() == Some(0)
+    cfg!(windows) || effective_uid() == Some(0)
 }
 
 /// What the second instance reported: its exit code once it closed, or why
@@ -65,8 +76,37 @@ pub fn relaunch_as_root(scan_path: &Path, config_dir: &Path) -> Result<Launch, S
         .unwrap_or_else(std::env::temp_dir);
     let ready_file = runtime.join(format!("oxtree-root-{}", std::process::id()));
     let _ = std::fs::remove_file(&ready_file);
-    let mut cmd = Command::new("pkexec");
-    cmd.arg("env");
+    if cfg!(windows) {
+        return Err("OxTree already runs as administrator".into());
+    }
+    let mut cmd = if cfg!(target_os = "macos") {
+        // `do shell script ... with administrator privileges` shows the
+        // system's password prompt and waits for the command, as pkexec
+        // does. The script is one shell line with every argument quoted.
+        let line = [
+            format!("OXTREE_CONFIG_DIR={}", config_dir.display()),
+            format!("OXTREE_READY_FILE={}", ready_file.display()),
+            exe.to_string_lossy().into_owned(),
+            scan_path.to_string_lossy().into_owned(),
+        ]
+        .iter()
+        .map(|a| oxtree_core::cleanup::quoted(a))
+        .collect::<Vec<_>>()
+        .join(" ");
+        let mut cmd = Command::new("osascript");
+        cmd.args(["-e", "on run argv"])
+            .args([
+                "-e",
+                "do shell script (item 1 of argv) with administrator privileges",
+            ])
+            .args(["-e", "end run"])
+            .arg(format!("env {line} >/dev/null 2>&1"));
+        cmd
+    } else {
+        let mut cmd = Command::new("pkexec");
+        cmd.arg("env");
+        cmd
+    };
     for key in [
         "WAYLAND_DISPLAY",
         "DISPLAY",
@@ -87,20 +127,26 @@ pub fn relaunch_as_root(scan_path: &Path, config_dir: &Path) -> Result<Launch, S
             cmd.arg(format!("{key}={v}"));
         }
     }
-    cmd.arg(format!("OXTREE_CONFIG_DIR={}", config_dir.display()));
-    cmd.arg(format!("OXTREE_READY_FILE={}", ready_file.display()));
-    cmd.arg(exe).arg(scan_path);
+    if !cfg!(target_os = "macos") {
+        cmd.arg(format!("OXTREE_CONFIG_DIR={}", config_dir.display()));
+        cmd.arg(format!("OXTREE_READY_FILE={}", ready_file.display()));
+        cmd.arg(exe).arg(scan_path);
+    }
     // Nothing is piped: this process goes away once the root instance is
     // up, and a child writing to a closed pipe would fail its prints.
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    let mut child = cmd.spawn().map_err(|e| format!("Cannot run pkexec: {e}"))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Cannot ask for authorization: {e}"))?;
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let result = match child.wait() {
             Ok(status) => match status.code() {
                 Some(0) => Ok(0),
+                // osascript exits 1 for a cancelled prompt too.
+                Some(1) if cfg!(target_os = "macos") => Err("Authorization dismissed.".into()),
                 Some(126) => Err("Authorization dismissed.".into()),
                 Some(127) => Err("Not authorized to run OxTree as root.".into()),
                 Some(code) => Err(format!("The root instance ended with code {code}.")),
@@ -121,6 +167,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(unix)]
     fn uid_is_read_from_proc() {
         let uid = effective_uid().unwrap();
         assert_eq!(uid == 0, is_root());

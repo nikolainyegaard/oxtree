@@ -3,6 +3,13 @@
 //! timings; `--screenshot FILE` saves the first full frame as PPM and
 //! exits, for the change checklist.
 
+// No console window behind the GUI on Windows. The diagnostics build keeps
+// one for its prints; `--export` to a file works either way.
+#![cfg_attr(
+    all(windows, not(feature = "diagnostics")),
+    windows_subsystem = "windows"
+)]
+
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -112,7 +119,7 @@ fn main() {
     let (w, h) = settings.window.unwrap_or((1200.0, 800.0));
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title(if oxtree_native::root::is_root() {
+            .with_title(if cfg!(unix) && oxtree_native::root::is_root() {
                 "OxTree [root]"
             } else {
                 "OxTree"
