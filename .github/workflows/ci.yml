@@ -31,3 +31,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --all-targets --features diagnostics
+      - if: runner.os == 'Windows'
+        run: cargo build --release --features diagnostics
+      - if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: oxtree-windows-diagnostics
+          path: target/release/oxtree.exe
