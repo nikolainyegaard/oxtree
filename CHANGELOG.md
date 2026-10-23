@@ -6,6 +6,15 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `bench/launch.py` measures any Wayland program from outside, and docs/benchmark.md compares OxTree with QDirStat on the same machine
+
+### Fixed
+
+- The Open Directory dialog listed no filesystems: df pads its columns and may exit 1 for one unreadable mount, and the parser accepted neither
+- A scan of a directory that is not a mount point rendered the treemap twice, the second time when the free space arrived
+
 ## [0.2.0] - 2026-10-23
 
 ### Added

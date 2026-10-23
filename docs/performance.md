@@ -34,7 +34,7 @@ RSS is over budget in 0.1.0. See the memory section for where it goes and the pl
 | CSV export of /usr | 166 ms | 35 MB of text, one path string per node; on the UI thread, once per export |
 | First frame | 75 ms | eframe on glow under Wayland; the spike measured 43 ms without menus and panels |
 
-Installed QDirStat 2.0 for comparison: read of /usr logged at 41.6 s, RSS 97 MB after that scan, 1.8 MB binary plus five Qt6 libraries.
+QDirStat 2.0 on the same machine, measured from outside with `bench/launch.py`: `/usr` done in 1.1 s against 0.2, the home directory in 3.1 s against 0.65, PSS 158 MB against 95 with `/usr` loaded. The protocol and the table are in [benchmark.md](benchmark.md). An earlier note here of 41.6 s for QDirStat's read of `/usr` was wrong, taken with a cold cache or on battery; its own log says 0.71 s warm.
 
 ## Where the memory goes
 
@@ -127,6 +127,7 @@ Environment variables and flags read at startup, for measuring and for bisecting
 | the `first frame after N ms` line | Printed to stderr on every start of a diagnostics build; the plain build prints nothing |
 | `--screenshot FILE.ppm` | Writes the first full frame and prints its minimum alpha and translucent pixel count to stderr; must say `min 255` |
 | `oxtree-bench PATH` | Scan, layout, render, cache, types, duplicates, CSV and search timings for one tree, to stdout; `OXTREE_CROSS_FILESYSTEMS=0` keeps the scan on one filesystem |
+| `bench/launch.py -- PROGRAM ARGS` | First frame, time to done, and memory of any Wayland program, measured from outside; the comparison with QDirStat in benchmark.md uses it |
 
 ## Dead ends
 

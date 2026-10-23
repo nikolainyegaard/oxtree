@@ -979,8 +979,13 @@ impl OxTreeApp {
                 Ok(free) => {
                     self.free_job = None;
                     self.free_space = free;
-                    self.rows_dirty = true;
-                    self.treemap.generation += 1;
+                    // The row and the strip exist only for a volume root; a
+                    // rebuild for any other scan would render the same map
+                    // twice.
+                    if self.root_is_volume && free.is_some() {
+                        self.rows_dirty = true;
+                        self.treemap.generation += 1;
+                    }
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => self.free_job = None,
                 Err(std::sync::mpsc::TryRecvError::Empty) => {}

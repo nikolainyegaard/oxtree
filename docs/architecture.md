@@ -32,6 +32,9 @@ docs/
   design.md                colours, sizes, UI structure and copy
   cleanups.md              cleanup configuration and placeholders
   performance.md           measurements, budgets and the optimisation plan
+  benchmark.md             OxTree against QDirStat, protocol and results
+bench/
+  launch.py                first frame, time to done and memory of a Wayland program, from outside
   gotchas.md               dated decisions and dead ends
 crates/core/src/
   lib.rs

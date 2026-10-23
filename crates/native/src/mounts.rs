@@ -120,28 +120,38 @@ pub fn volumes() -> Vec<Volume> {
         .args(["-B1", "--output=target,fstype,size,used,avail"])
         .stdin(std::process::Stdio::null())
         .output();
+    // df exits 1 when one mount cannot be read (a document portal, a stale
+    // network mount) and still prints the others, so the exit code is
+    // ignored and the output is what counts.
     let text = match out {
-        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).into_owned(),
-        _ => return Vec::new(),
+        Ok(o) => String::from_utf8_lossy(&o.stdout).into_owned(),
+        Err(_) => return Vec::new(),
     };
     let mut volumes = parse_df(&text, &table);
     volumes.sort_by(|a, b| a.mount.path.cmp(&b.mount.path));
     volumes
 }
 
-/// `df` output: a header, then `target fstype size used avail` per line.
-/// The target may contain spaces, so the four numbers are taken from the
-/// right.
+/// `df` output: a header, then `target fstype size used avail` per line,
+/// padded into columns. The target may contain spaces, so the four fields
+/// on the right are peeled off one at a time and the rest is the target.
 fn parse_df(text: &str, table: &MountTable) -> Vec<Volume> {
     text.lines()
         .skip(1)
         .filter_map(|line| {
-            let mut fields = line.rsplitn(5, ' ').filter(|f| !f.is_empty());
-            let avail: u64 = fields.next()?.parse().ok()?;
-            let used: u64 = fields.next()?.parse().ok()?;
-            let size: u64 = fields.next()?.parse().ok()?;
-            let _fstype = fields.next()?;
-            let target = fields.next()?.trim();
+            let mut rest = line.trim_end();
+            let mut take = || -> Option<&str> {
+                let r = rest.trim_end();
+                let i = r.rfind(char::is_whitespace)?;
+                let token = r.get(i + 1..)?;
+                rest = r.get(..i)?;
+                Some(token)
+            };
+            let avail: u64 = take()?.parse().ok()?;
+            let used: u64 = take()?.parse().ok()?;
+            let size: u64 = take()?.parse().ok()?;
+            let _fstype = take()?;
+            let target = rest.trim();
             let mount = table.at(Path::new(target))?.clone();
             if !mount.is_readable_storage() || size == 0 {
                 return None;
@@ -181,6 +191,22 @@ fn unescape(s: &str) -> String {
 mod tests {
     use super::*;
 
+    /// `cargo test -p oxtree-native -- --ignored --nocapture volumes_on_this_machine`
+    #[test]
+    #[ignore]
+    fn volumes_on_this_machine() {
+        let v = volumes();
+        for vol in &v {
+            println!(
+                "{} {} {}",
+                vol.mount.path.display(),
+                vol.mount.fs_type,
+                vol.size
+            );
+        }
+        assert!(!v.is_empty(), "df listed nothing readable");
+    }
+
     const SAMPLE: &str = "\
 /dev/nvme0n1p3 / btrfs rw,subvol=/root 0 0
 devtmpfs /dev devtmpfs rw 0 0
@@ -215,12 +241,13 @@ systemd-1 /proc/sys/fs/binfmt_misc autofs rw 0 0
     #[test]
     fn df_lines_join_the_mount_table() {
         let t = MountTable::parse(SAMPLE);
-        let df = "Mounted on Type 1B-blocks Used Avail\n\
-/ btrfs 1000 400 600\n\
-/run tmpfs 100 1 99\n\
-/home btrfs 1000 400 600\n\
-/mnt/nas nfs4 5000 1 4999\n\
-/run/media/me/My Stick exfat 64 32 32\n";
+        // Padded into columns as df prints it, numbers right-aligned.
+        let df = "Mounted on              Type       1B-blocks  Used Avail\n\
+/                       btrfs           1000   400   600\n\
+/run                    tmpfs            100     1    99\n\
+/home                   btrfs           1000   400   600\n\
+/mnt/nas                nfs4            5000     1  4999\n\
+/run/media/me/My Stick  exfat             64    32    32\n";
         let v = parse_df(df, &t);
         let paths: Vec<String> = v
             .iter()
