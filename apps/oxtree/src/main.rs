@@ -167,7 +167,15 @@ fn main() {
         }),
     );
     if let Err(e) = result {
-        eprintln!("OxTree could not open a window: {e}");
+        let text = format!("OxTree could not open a window: {e}");
+        eprintln!("{text}");
+        if cfg!(windows) {
+            // The GUI subsystem has no console, so say it in a box.
+            let _ = std::process::Command::new("powershell")
+                .args(["-NoProfile", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [void][System.Windows.Forms.MessageBox]::Show($env:OXTREE_TEXT + \"`n`nOn a machine without a GPU, unpack the software OpenGL zip from the release into the folder with oxtree.exe.\", 'OxTree')"])
+                .env("OXTREE_TEXT", &text)
+                .status();
+        }
         std::process::exit(1);
     }
 }

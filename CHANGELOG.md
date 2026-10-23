@@ -8,7 +8,7 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Windows: an NTFS volume is read from its Master File Table, the way WizTree does, instead of walked; the binary asks for administrator rights at start for that. Trash goes to the Recycle Bin, the folder picker and the time zone come through PowerShell, the configuration lives under `%APPDATA%\oxtree`. Releases carry a zip with the executable
+- Windows: an NTFS volume is read from its Master File Table, the way WizTree does, instead of walked; the binary asks for administrator rights at start for that. Trash goes to the Recycle Bin, the folder picker and the time zone come through PowerShell, the configuration lives under `%APPDATA%\oxtree`. Releases carry a zip with the executable and a separate software OpenGL zip for machines without a GPU
 - macOS: a universal app bundle, signed ad hoc. Mounts come from `mount`, free space from `df -k`, the trash and the folder picker through Finder, Rescan as Root through the system's administrator prompt, the terminal and file manager through `open`
 - CI compiles the Windows and macOS targets on every push
 - `bench/launch.py` measures any Wayland program from outside, and docs/benchmark.md compares OxTree with QDirStat on the same machine

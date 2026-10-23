@@ -30,7 +30,7 @@ Each release on the [releases page](https://github.com/nikolainyegaard/oxtree/re
 
 For macOS there is a zip with a universal app bundle. It is signed ad hoc, not notarised, so the first launch needs the quarantine mark removed with `xattr -d com.apple.quarantine OxTree.app` or an Open Anyway under System Settings, Privacy & Security.
 
-For Windows there is a zip with the executable. It asks for administrator rights at start: an NTFS volume is read from its Master File Table, the way WizTree does, which needs them. Without an NTFS volume (exFAT, a network share) it walks the directories instead. The executable is unsigned, so SmartScreen asks once.
+For Windows there is a zip with the executable. It asks for administrator rights at start: an NTFS volume is read from its Master File Table, the way WizTree does, which needs them. Without an NTFS volume (exFAT, a network share) it walks the directories instead. The executable is unsigned, so SmartScreen asks once. On a machine without a GPU, such as a Windows 365 or other virtual desktop, OpenGL is missing and the window cannot open; unpack the software OpenGL zip from the same release into the folder with the executable, which adds a Mesa renderer that draws on the CPU.
 
 The macOS and Windows builds are new and have had little testing; the Linux build is the one the author uses.
 

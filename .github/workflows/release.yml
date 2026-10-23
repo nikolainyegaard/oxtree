@@ -114,6 +114,18 @@ jobs:
           New-Item -ItemType Directory dist, stage | Out-Null
           Copy-Item target/release/oxtree.exe, README.md, LICENSE, NOTICE, CHANGELOG.md stage/
           Compress-Archive -Path stage/* -DestinationPath "dist/OxTree-$version-windows-x86_64.zip"
+      - name: Software OpenGL zip
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MESA: 26.2.4
+        run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart("v")
+          gh release download $env:MESA -R pal1000/mesa-dist-win -p "mesa3d-$env:MESA-release-msvc.7z" -O mesa.7z
+          7z e mesa.7z x64/opengl32.dll x64/libgallium_wgl.dll -ogl | Out-Null
+          Copy-Item packaging/software-opengl.txt gl/README.txt
+          Copy-Item packaging/MESA-LICENSE gl/
+          Compress-Archive -Path gl/* -DestinationPath "dist/OxTree-$version-windows-software-opengl.zip"
       - uses: actions/upload-artifact@v7
         with:
           name: dist-windows
@@ -139,7 +151,7 @@ jobs:
             on { print }
           ' CHANGELOG.md > notes.md
           printf '\nLinux binaries are built against glibc %s. The aarch64 builds are untested; please report what you find.\n' "$GLIBC" >> notes.md
-          printf '\nThe macOS app is a universal binary, signed ad hoc only: on first launch, remove the quarantine mark with `xattr -d com.apple.quarantine OxTree.app` or allow it under System Settings, Privacy & Security. The Windows build asks for administrator rights at start, which reading the volume directly needs; it is unsigned, so SmartScreen will ask once.\n' >> notes.md
+          printf '\nThe macOS app is a universal binary, signed ad hoc only: on first launch, remove the quarantine mark with `xattr -d com.apple.quarantine OxTree.app` or allow it under System Settings, Privacy & Security. The Windows build asks for administrator rights at start, which reading the volume directly needs; it is unsigned, so SmartScreen will ask once. On a machine without a GPU, such as a virtual desktop, the window needs the software OpenGL zip unpacked next to the executable.\n' >> notes.md
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
