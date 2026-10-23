@@ -176,17 +176,33 @@ impl Volume {
         cancel: &AtomicBool,
         progress: &mut dyn FnMut(usize, u64),
     ) -> Result<Tree, String> {
+        let timing = std::env::var_os("OXTREE_MFT_TIMING").is_some();
+        let t0 = std::time::Instant::now();
         let entries = self.read_entries(src, cancel, progress)?;
+        let t1 = std::time::Instant::now();
         let mut start = ROOT_RECORD;
         for component in below {
             start = child_dir_named(&entries, start, component)
                 .ok_or_else(|| format!("{component} was not found on the volume"))?;
         }
+        let records = entries.len();
         let dirs = assemble(entries, start, root_name);
-        Tree::build(
+        let t2 = std::time::Instant::now();
+        let tree = Tree::build(
             dirs.first().map(|d| d.name.clone()).unwrap_or_default(),
             dirs,
-        )
+        );
+        if timing {
+            eprintln!(
+                "mft: {} MiB in {} records; read and parse {:?}, assemble {:?}, build {:?}",
+                self.mft_len >> 20,
+                records,
+                t1 - t0,
+                t2 - t1,
+                t2.elapsed()
+            );
+        }
+        tree
     }
 
     fn read_entries(
@@ -208,6 +224,7 @@ impl Volume {
         let mut bytes: u64 = 0;
         let mut remaining = self.mft_len;
         let mut since_report = 0;
+        let mut live = 0usize;
         for &(lcn, len) in &self.mft_runs {
             let mut offset = lcn.saturating_mul(self.cluster);
             let mut run_left = len.saturating_mul(self.cluster).min(remaining);
@@ -236,6 +253,7 @@ impl Volume {
                     if carry.len() == self.record {
                         let mut rec = std::mem::take(&mut carry);
                         bytes += parse_record(&mut rec, index, &mut entries);
+                        live += usize::from(is_live(&entries, index));
                         index = index.saturating_add(1);
                         since_report += 1;
                     }
@@ -245,13 +263,14 @@ impl Volume {
                 for r in &mut records {
                     rec.copy_from_slice(r);
                     bytes += parse_record(&mut rec, index, &mut entries);
+                    live += usize::from(is_live(&entries, index));
                     index = index.saturating_add(1);
                     since_report += 1;
                 }
                 carry.extend_from_slice(records.remainder());
                 if since_report >= PROGRESS_EVERY {
                     since_report = 0;
-                    progress(entries.iter().filter(|e| e.in_use).count(), bytes);
+                    progress(live, bytes);
                 }
             }
         }
@@ -395,6 +414,11 @@ fn parse_record(rec: &mut [u8], index: u32, entries: &mut Vec<Entry>) -> u64 {
         entry.extra = names.collect();
     }
     found
+}
+
+/// Whether the record just parsed at `index` is a base record in use.
+fn is_live(entries: &[Entry], index: u32) -> bool {
+    entries.get(index as usize).is_some_and(|e| e.in_use)
 }
 
 /// Whether `link` of `child` hangs below a live directory.
