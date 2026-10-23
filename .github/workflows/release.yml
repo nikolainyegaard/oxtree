@@ -80,6 +80,8 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS
       - name: Release notes from the changelog
         run: |
           VERSION="${GITHUB_REF_NAME#v}"

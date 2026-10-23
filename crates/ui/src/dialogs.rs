@@ -29,6 +29,7 @@ fn preferences(app: &mut OxTreeApp, ctx: &Context) {
     let mut reset = false;
     let mut theme_changed = false;
     let mut check = false;
+    let mut update_now = false;
     egui::Modal::new(Id::unique("preferences")).show(ctx, |ui| {
         ui.set_width(560.0);
         ui.heading("Preferences");
@@ -121,6 +122,7 @@ fn preferences(app: &mut OxTreeApp, ctx: &Context) {
                         ui.checkbox(&mut app.check_updates, "Check automatically")
                             .on_hover_text("One request to the GitHub releases API through curl, on the schedule next to it; nothing is downloaded. Off, OxTree never touches the network");
                         let label = match app.check_interval_days {
+                            0 => "on launch",
                             1 => "daily",
                             7 => "weekly",
                             30 => "monthly",
@@ -129,14 +131,16 @@ fn preferences(app: &mut OxTreeApp, ctx: &Context) {
                         egui::ComboBox::from_id_salt("update-interval")
                             .selected_text(label)
                             .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut app.check_interval_days, 0, "on launch");
                                 ui.selectable_value(&mut app.check_interval_days, 1, "daily");
                                 ui.selectable_value(&mut app.check_interval_days, 7, "weekly");
                                 ui.selectable_value(&mut app.check_interval_days, 30, "monthly");
                             });
                     });
                     ui.horizontal(|ui| {
+                        let busy = app.update_job.is_some() || app.install_job.is_some();
                         if ui
-                            .add_enabled(app.update_job.is_none(), egui::Button::new("Check for Updates"))
+                            .add_enabled(!busy, egui::Button::new("Check for Updates"))
                             .clicked()
                         {
                             check = true;
@@ -159,6 +163,29 @@ fn preferences(app: &mut OxTreeApp, ctx: &Context) {
                             None => {}
                         }
                     });
+                    if app.update_available().is_some() {
+                        ui.horizontal(|ui| {
+                            let can = app.install.as_ref().is_some_and(|i| i.can_update());
+                            let busy = app.install_job.is_some();
+                            if ui
+                                .add_enabled(can && !busy, egui::Button::new("Update Now"))
+                                .on_hover_text("Replaces this copy the way it was installed: through the package manager with the desktop's password prompt for a package, in place for an AppImage; then OxTree restarts")
+                                .clicked()
+                            {
+                                update_now = true;
+                            }
+                            if let Some(i) = &app.install {
+                                ui.label(egui::RichText::new(format!("This copy is {}", i.label())).weak());
+                            }
+                            if let Some(p) = &app.install_progress {
+                                ui.spinner();
+                                ui.label(p);
+                            }
+                        });
+                        if let Some(e) = &app.install_error {
+                            ui.colored_label(crate::theme::DIR_READ_ERROR, e);
+                        }
+                    }
                 });
                 ui.end_row();
             });
@@ -194,6 +221,9 @@ fn preferences(app: &mut OxTreeApp, ctx: &Context) {
     }
     if check {
         app.start_update_check();
+    }
+    if update_now {
+        app.start_update();
     }
     if reset {
         app.reset_settings(ctx);

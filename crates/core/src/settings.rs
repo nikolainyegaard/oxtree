@@ -56,10 +56,13 @@ pub struct Settings {
     pub match_path: bool,
     /// `[FileView] History0` to `History9`, newest first
     pub search_history: Vec<String>,
-    /// `[Updates] CheckAutomatically`, `CheckIntervalDays`, `LastCheck`
+    /// `[Updates] CheckAutomatically`, `CheckIntervalDays` (0 is every
+    /// launch), `LastCheck`, `LastInstalled` (the tag Update Now installed
+    /// last, not offered again if its binary reports an older version)
     pub check_updates: bool,
     pub check_interval_days: u32,
     pub last_check: i64,
+    pub last_installed: String,
 }
 
 pub const HISTORY_MAX: usize = 10;
@@ -89,6 +92,7 @@ impl Default for Settings {
             check_updates: false,
             check_interval_days: 7,
             last_check: 0,
+            last_installed: String::new(),
         }
     }
 }
@@ -191,8 +195,12 @@ impl Settings {
             match_path: flag(ini, "FileView", "MatchPath", false),
             search_history: history,
             check_updates: flag(ini, "Updates", "CheckAutomatically", false),
-            check_interval_days: number(ini, "Updates", "CheckIntervalDays", 7, 1, 365),
+            check_interval_days: number(ini, "Updates", "CheckIntervalDays", 7, 0, 365),
             last_check: number(ini, "Updates", "LastCheck", 0, 0, i64::MAX),
+            last_installed: ini
+                .get("Updates", "LastInstalled")
+                .unwrap_or("")
+                .to_string(),
         }
     }
 
@@ -280,6 +288,7 @@ impl Settings {
                 ("CheckAutomatically", self.check_updates.to_string()),
                 ("CheckIntervalDays", self.check_interval_days.to_string()),
                 ("LastCheck", self.last_check.to_string()),
+                ("LastInstalled", self.last_installed.clone()),
             ],
         );
         ini
@@ -346,6 +355,7 @@ mod tests {
             check_updates: true,
             check_interval_days: 30,
             last_check: 1_700_000_000,
+            last_installed: "v0.2.0".into(),
         };
         let text = s.to_ini().to_text();
         assert!(
@@ -361,7 +371,7 @@ mod tests {
         assert_eq!(s.search_history.len(), 3);
 
         let bad = Ini::parse(
-            "[General]\nSizeDecimals=9\n[TreeView]\nRowHeight=abc\nColumns=1,x,-5,30\n[MainWindow]\nWidth=10\nHeight=10\nTheme=purple\n[Updates]\nCheckIntervalDays=0\n",
+            "[General]\nSizeDecimals=9\n[TreeView]\nRowHeight=abc\nColumns=1,x,-5,30\n[MainWindow]\nWidth=10\nHeight=10\nTheme=purple\n[Updates]\nCheckIntervalDays=400\n",
         );
         let s = Settings::from_ini(&bad);
         assert_eq!(s.size_decimals, 1);

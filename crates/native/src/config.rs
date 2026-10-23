@@ -26,6 +26,16 @@ pub fn cleanups_path() -> PathBuf {
     config_dir().join("cleanups.conf")
 }
 
+/// Where Update Now keeps a downloaded package until it is installed.
+pub fn cache_dir() -> PathBuf {
+    std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
+        .unwrap_or_else(std::env::temp_dir)
+        .join("oxtree")
+}
+
 pub fn settings_path() -> PathBuf {
     config_dir().join("settings.conf")
 }

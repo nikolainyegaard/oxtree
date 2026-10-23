@@ -6,6 +6,13 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Update Now in Preferences once a check finds a newer release: a package from a repository is upgraded through dnf or apt with the desktop's password prompt, a package installed from a file is downloaded from the release, checked against its SHA-256 and installed the same way, an AppImage is replaced in place; OxTree then restarts on the same directory. The tarball keeps the link
+- The automatic check can run on every launch, next to daily, weekly and monthly
+- A found update stays in the status bar as a link to Preferences instead of a line that fades after three seconds
+- Releases carry a SHA256SUMS file
+
 ## [0.1.1] - 2026-10-23
 
 ### Fixed

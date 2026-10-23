@@ -21,7 +21,7 @@ use oxtree_core::settings::{Settings, StartIn, Theme};
 use oxtree_core::types::TypeRow;
 use oxtree_core::{format, Kind, NodeId, Tree, NO_NODE};
 use oxtree_native::run::RunEvent;
-use oxtree_native::update::UpdateResult;
+use oxtree_native::update::{Install, UpdateEvent, UpdateResult};
 use oxtree_native::{ScanEvent, ScanHandle, ScanOptions, Wake};
 
 use crate::columns::Columns;
@@ -306,6 +306,13 @@ pub struct OxTreeApp {
     pub last_check: i64,
     pub update_job: Option<Receiver<UpdateResult>>,
     pub update_result: Option<UpdateResult>,
+    pub last_installed: String,
+    /// How this copy was installed, detected when the check finds a newer
+    /// release; decides what Update Now does.
+    pub install: Option<Install>,
+    pub install_job: Option<Receiver<UpdateEvent>>,
+    pub install_progress: Option<String>,
+    pub install_error: Option<String>,
     pub preferences_open: bool,
     /// The window's size each frame, saved with the settings on exit.
     pub window_size: Option<(f32, f32)>,
@@ -474,6 +481,11 @@ impl OxTreeApp {
             last_check: 0,
             update_job: None,
             update_result: None,
+            last_installed: String::new(),
+            install: None,
+            install_job: None,
+            install_progress: None,
+            install_error: None,
             preferences_open: false,
             window_size: None,
             wake: Wake::default(),
@@ -555,6 +567,7 @@ impl OxTreeApp {
         self.check_updates = s.check_updates;
         self.check_interval_days = s.check_interval_days;
         self.last_check = s.last_check;
+        self.last_installed = s.last_installed.clone();
     }
 
     pub fn to_settings(&self) -> Settings {
@@ -581,6 +594,7 @@ impl OxTreeApp {
             check_updates: self.check_updates,
             check_interval_days: self.check_interval_days,
             last_check: self.last_check,
+            last_installed: self.last_installed.clone(),
         }
     }
 
@@ -627,12 +641,43 @@ impl OxTreeApp {
     /// Check for Updates, by hand or on schedule. Nothing runs unless this
     /// is called.
     pub fn start_update_check(&mut self) {
-        if self.update_job.is_some() {
+        if self.update_job.is_some() || self.install_job.is_some() {
             return;
         }
         self.last_check = unix_now();
         self.update_result = None;
+        self.install_error = None;
         self.update_job = Some(oxtree_native::update::check(VERSION));
+    }
+
+    /// The tag Update Now can install: a newer release, unless it is the
+    /// one just installed whose binary reports an older version.
+    pub fn update_available(&self) -> Option<&str> {
+        match &self.update_result {
+            Some(UpdateResult::Newer(tag)) if *tag != self.last_installed => Some(tag),
+            _ => None,
+        }
+    }
+
+    /// Update Now: replace this copy the way it was installed, on a thread;
+    /// `pump` relaunches and closes when it is done.
+    pub fn start_update(&mut self) {
+        let Some(tag) = self.update_available().map(str::to_string) else {
+            return;
+        };
+        let Some(install) = self.install.clone().filter(Install::can_update) else {
+            return;
+        };
+        if self.install_job.is_some() {
+            return;
+        }
+        self.install_error = None;
+        self.install_progress = Some("Starting...".into());
+        self.install_job = Some(oxtree_native::update::update(
+            install,
+            tag,
+            oxtree_native::config::cache_dir(),
+        ));
     }
 
     // ------------------------------------------------------------ status
@@ -884,15 +929,46 @@ impl OxTreeApp {
             match rx.try_recv() {
                 Ok(result) => {
                     self.update_job = None;
-                    if let UpdateResult::Newer(tag) = &result {
-                        self.set_status(
-                            format!("OxTree {tag} is available; see Edit, Preferences"),
-                            false,
-                        );
-                    }
                     self.update_result = Some(result);
+                    if self.update_available().is_some() && self.install.is_none() {
+                        self.install = Some(oxtree_native::update::detect());
+                    }
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => self.update_job = None,
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    ctx.request_repaint_after(Duration::from_millis(250));
+                }
+            }
+        }
+        if let Some(rx) = &self.install_job {
+            match rx.try_recv() {
+                Ok(UpdateEvent::Progress(p)) => {
+                    self.install_progress = Some(p);
+                    ctx.request_repaint_after(Duration::from_millis(250));
+                }
+                Ok(UpdateEvent::Done(Ok(exe))) => {
+                    self.install_job = None;
+                    self.install_progress = None;
+                    if let Some(UpdateResult::Newer(tag)) = &self.update_result {
+                        self.last_installed = tag.clone();
+                    }
+                    self.save_settings();
+                    let args: Vec<String> = self
+                        .scan_path
+                        .iter()
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .collect();
+                    match oxtree_native::update::relaunch(&exe, &args) {
+                        Ok(()) => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+                        Err(e) => self.install_error = Some(e),
+                    }
+                }
+                Ok(UpdateEvent::Done(Err(e))) => {
+                    self.install_job = None;
+                    self.install_progress = None;
+                    self.install_error = Some(e);
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.install_job = None,
                 Err(std::sync::mpsc::TryRecvError::Empty) => {
                     ctx.request_repaint_after(Duration::from_millis(250));
                 }

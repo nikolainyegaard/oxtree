@@ -27,6 +27,17 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
             if app.scan.is_some() {
                 ui.spinner();
             }
+            // A found update stays here until it is installed or the window
+            // closes; the click opens Preferences, where Update Now is.
+            if let Some(tag) = app.update_available() {
+                if ui
+                    .link(format!("OxTree {tag} is available"))
+                    .on_hover_text("Open Preferences to update")
+                    .clicked()
+                {
+                    app.preferences_open = true;
+                }
+            }
         });
     });
 }
