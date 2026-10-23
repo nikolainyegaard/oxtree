@@ -18,7 +18,9 @@ Same laptop, same files, both programs measured from outside; the protocol and t
 | `/usr` (357 000 files) scanned and drawn | 1.1 s | 0.2 s | -81% |
 | A home directory (981 000 files) scanned and drawn | 3.1 s | 0.65 s | -79% |
 | Memory with `/usr` loaded | 158 MB | 95 MB | -40% |
-| On disk | 2 MB plus 45 MB of Qt | one 9 MB file | -81% |
+| App plus its libraries, on disk | 47 MB | 9 MB | -81% |
+
+The 47 MB is QDirStat with the Qt 6 libraries it needs; a desktop that already has Qt, KDE for one, adds only its 2 MB. OxTree is one file that needs nothing beyond glibc and Mesa, which every desktop has.
 
 QDirStat does more: package views, file age and size statistics, editors for cleanups, categories and exclude rules, a subtree refresh. The numbers above are for what both do.
 
