@@ -76,8 +76,25 @@ pub fn scan(
     progress: &mut dyn FnMut(usize, u64),
 ) -> Option<Result<Tree, String>> {
     let (drive, below) = split_drive(path)?;
-    let mut file = File::open(format!(r"\\.\{drive}:")).ok()?;
-    let volume = Volume::open(&mut file).ok()?;
+    let timing = std::env::var_os("OXTREE_MFT_TIMING").is_some();
+    let mut file = match File::open(format!(r"\\.\{drive}:")) {
+        Ok(f) => f,
+        Err(e) => {
+            if timing {
+                eprintln!("mft: cannot open volume {drive}:, walking instead: {e}");
+            }
+            return None;
+        }
+    };
+    let volume = match Volume::open(&mut file) {
+        Ok(v) => v,
+        Err(e) => {
+            if timing {
+                eprintln!("mft: {e}, walking instead");
+            }
+            return None;
+        }
+    };
     let mut root_name = path.to_string_lossy().into_owned();
     while root_name.len() > 3 && root_name.ends_with(['\\', '/']) {
         root_name.pop();
