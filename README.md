@@ -6,7 +6,7 @@ OxTree scans a directory on all cores, draws the result as a sortable tree with 
 
 ## Status
 
-Version 0.1.1 covers the daily use: scan, tree, treemap, details, cleanups, trash, QDirStat cache files, a File View with search, a File Types view, duplicates, CSV export, multi-selection and a Preferences dialog. Not there yet: rename, a file age view, exclude rule and category editors. Cleanups and exclude rules are edited in their configuration files.
+Version 0.2.0 covers the daily use: scan, tree, treemap, details, cleanups, trash, QDirStat cache files, a File View with search, a File Types view, duplicates, CSV export, multi-selection and a Preferences dialog. Not there yet: rename, a file age view, exclude rule and category editors. Cleanups and exclude rules are edited in their configuration files.
 
 ## Install
 

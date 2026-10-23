@@ -6,6 +6,8 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-23
+
 ### Added
 
 - Update Now in Preferences once a check finds a newer release: a package from a repository is upgraded through dnf or apt with the desktop's password prompt, a package installed from a file is downloaded from the release, checked against its SHA-256 and installed the same way, an AppImage is replaced in place; OxTree then restarts on the same directory. The tarball keeps the link
@@ -48,6 +50,7 @@ The first release.
 - File names in any script, through the system's fonts
 - A `diagnostics` Cargo feature with startup timing, a screenshot mode and a benchmark binary, off in release builds
 
-[Unreleased]: https://github.com/nikolainyegaard/oxtree/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/nikolainyegaard/oxtree/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/nikolainyegaard/oxtree/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/nikolainyegaard/oxtree/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/nikolainyegaard/oxtree/releases/tag/v0.1.0
