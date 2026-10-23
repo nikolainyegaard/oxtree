@@ -295,15 +295,17 @@ pub fn show(app: &mut OxTreeApp, ui: &mut Ui) {
                 app.refresh_all();
                 ui.close();
             }
-            if ui
-                .add_enabled(
-                    app.scan_path.is_some() && !app.is_root && app.root_launch.is_none(),
-                    egui::Button::new("Rescan as Root..."),
-                )
-                .on_hover_text(
-                    "Replaces this window with OxTree running as root on the same directory, through polkit",
-                )
-                .clicked()
+            // Windows always runs elevated, so the item has no meaning there.
+            if cfg!(unix)
+                && ui
+                    .add_enabled(
+                        app.scan_path.is_some() && !app.is_root && app.root_launch.is_none(),
+                        egui::Button::new("Rescan as Root..."),
+                    )
+                    .on_hover_text(
+                        "Replaces this window with OxTree running as root on the same directory, through polkit",
+                    )
+                    .clicked()
             {
                 app.rescan_as_root();
                 ui.close();
