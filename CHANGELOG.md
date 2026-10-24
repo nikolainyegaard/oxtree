@@ -9,6 +9,7 @@ uses [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - macOS: the app bundle runs on Intel Macs from macOS 10.12, previously 11.0 for both architectures
+- macOS: evicted iCloud Drive and File Provider content is no longer downloaded by the scan; it blocked a scan of a fresh install for minutes. An evicted folder shows as not read
 
 ## [0.3.0] - 2026-10-24
 

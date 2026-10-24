@@ -17,7 +17,8 @@ oxtree-native = { path = "crates/native" }
 oxtree-ui = { path = "crates/ui" }
 
 [workspace.lints.rust]
-unsafe_code = "forbid"
+# deny, not forbid: `native::iopolicy` allows one libc call on macOS.
+unsafe_code = "deny"
 
 [workspace.lints.clippy]
 unwrap_used = "deny"

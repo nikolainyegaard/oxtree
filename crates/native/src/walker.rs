@@ -193,6 +193,7 @@ fn run_scan(
         }
         return;
     }
+    crate::iopolicy::skip_dataless();
     let root_dev = meta::dev(&root_md);
     let threads = if options.threads == 0 {
         std::thread::available_parallelism()

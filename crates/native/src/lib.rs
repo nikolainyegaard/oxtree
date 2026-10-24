@@ -5,6 +5,7 @@
 pub mod cache_io;
 pub mod config;
 pub mod dialog;
+pub mod iopolicy;
 pub mod localtime;
 pub mod meta;
 pub mod mft;
