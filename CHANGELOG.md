@@ -6,6 +6,10 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- macOS: the app bundle runs on Intel Macs from macOS 10.12, previously 11.0 for both architectures
+
 ## [0.3.0] - 2026-10-24
 
 ### Added
