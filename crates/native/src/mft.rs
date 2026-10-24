@@ -76,22 +76,20 @@ pub fn scan(
     progress: &mut dyn FnMut(usize, u64),
 ) -> Option<Result<Tree, String>> {
     let (drive, below) = split_drive(path)?;
-    let timing = std::env::var_os("OXTREE_MFT_TIMING").is_some();
+    // One line per scan on stderr: the GUI build has no console, the
+    // diagnostics build shows it. An environment switch would be lost when
+    // UAC elevates the process into a fresh console.
     let mut file = match File::open(format!(r"\\.\{drive}:")) {
         Ok(f) => f,
         Err(e) => {
-            if timing {
-                eprintln!("mft: cannot open volume {drive}:, walking instead: {e}");
-            }
+            eprintln!("mft: cannot open volume {drive}:, walking instead: {e}");
             return None;
         }
     };
     let volume = match Volume::open(&mut file) {
         Ok(v) => v,
         Err(e) => {
-            if timing {
-                eprintln!("mft: {e}, walking instead");
-            }
+            eprintln!("mft: {e}, walking instead");
             return None;
         }
     };
@@ -193,7 +191,6 @@ impl Volume {
         cancel: &AtomicBool,
         progress: &mut dyn FnMut(usize, u64),
     ) -> Result<Tree, String> {
-        let timing = std::env::var_os("OXTREE_MFT_TIMING").is_some();
         let t0 = std::time::Instant::now();
         let entries = self.read_entries(src, cancel, progress)?;
         let t1 = std::time::Instant::now();
@@ -209,16 +206,14 @@ impl Volume {
             dirs.first().map(|d| d.name.clone()).unwrap_or_default(),
             dirs,
         );
-        if timing {
-            eprintln!(
-                "mft: {} MiB in {} records; read and parse {:?}, assemble {:?}, build {:?}",
-                self.mft_len >> 20,
-                records,
-                t1 - t0,
-                t2 - t1,
-                t2.elapsed()
-            );
-        }
+        eprintln!(
+            "mft: {} MiB in {} records; read and parse {:?}, assemble {:?}, build {:?}",
+            self.mft_len >> 20,
+            records,
+            t1 - t0,
+            t2 - t1,
+            t2.elapsed()
+        );
         tree
     }
 

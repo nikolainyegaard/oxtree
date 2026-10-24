@@ -42,6 +42,9 @@
     <keyword>treemap</keyword>
   </keywords>
   <releases>
+    <release version="0.3.0" date="2026-10-24">
+      <url>https://github.com/nikolainyegaard/oxtree/releases/tag/v0.3.0</url>
+    </release>
     <release version="0.2.0" date="2026-10-23">
       <url>https://github.com/nikolainyegaard/oxtree/releases/tag/v0.2.0</url>
     </release>

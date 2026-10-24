@@ -6,6 +6,8 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-24
+
 ### Added
 
 - Windows: an NTFS volume is read from its Master File Table, the way WizTree does, instead of walked; the binary asks for administrator rights at start for that. Trash goes to the Recycle Bin, the folder picker and the time zone come through PowerShell, the configuration lives under `%APPDATA%\oxtree`. Releases carry a zip with the executable and a separate software OpenGL zip for machines without a GPU
@@ -62,7 +64,8 @@ The first release.
 - File names in any script, through the system's fonts
 - A `diagnostics` Cargo feature with startup timing, a screenshot mode and a benchmark binary, off in release builds
 
-[Unreleased]: https://github.com/nikolainyegaard/oxtree/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/nikolainyegaard/oxtree/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/nikolainyegaard/oxtree/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/nikolainyegaard/oxtree/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/nikolainyegaard/oxtree/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/nikolainyegaard/oxtree/releases/tag/v0.1.0
