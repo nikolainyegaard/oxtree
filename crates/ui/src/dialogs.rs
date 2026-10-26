@@ -98,6 +98,22 @@ fn preferences(app: &mut OxTreeApp, ctx: &Context) {
                     {
                         oxtree_core::format::set_size_decimals(app.size_decimals);
                     }
+                    ui.add_space(12.0);
+                    ui.label("Units");
+                    use oxtree_core::format::SizeUnits;
+                    let before = app.size_units;
+                    egui::ComboBox::from_id_salt("size_units")
+                        .selected_text(units_label(app.size_units))
+                        .show_ui(ui, |ui| {
+                            for u in [SizeUnits::Binary, SizeUnits::Decimal, SizeUnits::Windows] {
+                                ui.selectable_value(&mut app.size_units, u, units_label(u));
+                            }
+                        })
+                        .response
+                        .on_hover_text("Binary is the IEC form, 1024 per step; decimal the SI form, 1000 per step; Windows style divides by 1024 but labels as Explorer and WizTree do");
+                    if app.size_units != before {
+                        oxtree_core::format::set_size_units(app.size_units);
+                    }
                 });
                 ui.end_row();
 
@@ -588,4 +604,13 @@ fn output(app: &mut OxTreeApp, ctx: &Context) {
             }
         });
     out.open = open;
+}
+
+fn units_label(u: oxtree_core::format::SizeUnits) -> &'static str {
+    use oxtree_core::format::SizeUnits;
+    match u {
+        SizeUnits::Binary => "Binary (GiB)",
+        SizeUnits::Decimal => "Decimal (GB)",
+        SizeUnits::Windows => "Windows style (1024 as GB)",
+    }
 }

@@ -14,6 +14,7 @@ use oxtree_core::cushion::Shading;
 use oxtree_core::dupes::DupMode;
 use oxtree_core::export::ExportOptions;
 use oxtree_core::flat::{flat_list_filtered, FlatSort};
+use oxtree_core::format::SizeUnits;
 use oxtree_core::layout::Tile;
 use oxtree_core::mime::Categorizer;
 use oxtree_core::query::{Item, Query};
@@ -300,6 +301,7 @@ pub struct OxTreeApp {
     pub row_height: f32,
     pub theme: Theme,
     pub size_decimals: u8,
+    pub size_units: SizeUnits,
     pub search_history: Vec<String>,
     pub check_updates: bool,
     pub check_interval_days: u32,
@@ -475,6 +477,7 @@ impl OxTreeApp {
             row_height: theme::ROW_HEIGHT,
             theme: Theme::System,
             size_decimals: 1,
+            size_units: SizeUnits::default(),
             search_history: Vec::new(),
             check_updates: false,
             check_interval_days: 7,
@@ -548,6 +551,8 @@ impl OxTreeApp {
         self.theme = s.theme;
         self.size_decimals = s.size_decimals;
         format::set_size_decimals(s.size_decimals);
+        self.size_units = s.size_units;
+        format::set_size_units(s.size_units);
         self.row_height = s.row_height;
         for (cols, saved) in [
             (&mut self.tree_columns, &s.tree_columns),
@@ -582,6 +587,7 @@ impl OxTreeApp {
             window: self.window_size,
             theme: self.theme,
             size_decimals: self.size_decimals,
+            size_units: self.size_units,
             row_height: self.row_height,
             tree_columns: self.tree_columns.widths.clone(),
             file_columns: self.file_columns.widths.clone(),

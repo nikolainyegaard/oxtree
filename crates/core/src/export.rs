@@ -191,6 +191,10 @@ mod tests {
         let big = t.children(0).next().unwrap();
         let d = t.children(big).next().unwrap();
         let text = tree_text(&t, [(0, 0), (big, 1), (d, 2)].into_iter());
-        assert_eq!(text, "/root/\t13.4 kB\n  big/\t5.0 kB\n    d\t1000 Bytes\n");
+        format::set_size_units(format::SizeUnits::Binary);
+        assert_eq!(
+            text,
+            "/root/\t13.4 KiB\n  big/\t5.0 KiB\n    d\t1000 Bytes\n"
+        );
     }
 }

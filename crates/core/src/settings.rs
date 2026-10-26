@@ -4,6 +4,7 @@
 //! file never stops the app.
 
 use crate::dupes::DupMode;
+use crate::format::SizeUnits;
 use crate::ini::Ini;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -41,8 +42,10 @@ pub struct Settings {
     pub window: Option<(f32, f32)>,
     /// `[MainWindow] Theme`: system, light or dark
     pub theme: Theme,
-    /// `[General] SizeDecimals`, 0 to 3
+    /// `[General] SizeDecimals`, 0 to 3, and `SizeUnits`: binary, decimal
+    /// or windows, the platform's file manager's form by default
     pub size_decimals: u8,
+    pub size_units: SizeUnits,
     /// `[TreeView] RowHeight`, 16 to 40
     pub row_height: f32,
     /// `[TreeView] Columns`, `[FileView] Columns`, `[FileTypes] Columns`
@@ -80,6 +83,7 @@ impl Default for Settings {
             window: None,
             theme: Theme::System,
             size_decimals: 1,
+            size_units: SizeUnits::default(),
             row_height: 20.0,
             tree_columns: Vec::new(),
             file_columns: Vec::new(),
@@ -181,6 +185,12 @@ impl Settings {
                 _ => Theme::System,
             },
             size_decimals: number(ini, "General", "SizeDecimals", 1, 0, 3),
+            size_units: match ini.get("General", "SizeUnits") {
+                Some("binary") => SizeUnits::Binary,
+                Some("decimal") => SizeUnits::Decimal,
+                Some("windows") => SizeUnits::Windows,
+                _ => SizeUnits::default(),
+            },
             row_height: number(ini, "TreeView", "RowHeight", 20.0, 16.0, 40.0),
             tree_columns: floats(ini, "TreeView", "Columns"),
             file_columns: floats(ini, "FileView", "Columns"),
@@ -220,6 +230,15 @@ impl Settings {
                 ),
                 ("StartPath", self.start_path.clone()),
                 ("SizeDecimals", self.size_decimals.to_string()),
+                (
+                    "SizeUnits",
+                    match self.size_units {
+                        SizeUnits::Binary => "binary",
+                        SizeUnits::Decimal => "decimal",
+                        SizeUnits::Windows => "windows",
+                    }
+                    .to_string(),
+                ),
             ],
         );
         let mut main = vec![
@@ -343,6 +362,7 @@ mod tests {
             window: Some((1280.0, 720.0)),
             theme: Theme::Dark,
             size_decimals: 2,
+            size_units: SizeUnits::Windows,
             row_height: 24.0,
             tree_columns: vec![400.0, 188.0],
             file_columns: vec![520.0],
@@ -371,10 +391,11 @@ mod tests {
         assert_eq!(s.search_history.len(), 3);
 
         let bad = Ini::parse(
-            "[General]\nSizeDecimals=9\n[TreeView]\nRowHeight=abc\nColumns=1,x,-5,30\n[MainWindow]\nWidth=10\nHeight=10\nTheme=purple\n[Updates]\nCheckIntervalDays=400\n",
+            "[General]\nSizeDecimals=9\nSizeUnits=metric\n[TreeView]\nRowHeight=abc\nColumns=1,x,-5,30\n[MainWindow]\nWidth=10\nHeight=10\nTheme=purple\n[Updates]\nCheckIntervalDays=400\n",
         );
         let s = Settings::from_ini(&bad);
         assert_eq!(s.size_decimals, 1);
+        assert_eq!(s.size_units, SizeUnits::default());
         assert_eq!(s.row_height, 20.0);
         assert_eq!(s.tree_columns, vec![1.0, 30.0]);
         assert_eq!(s.window, None);

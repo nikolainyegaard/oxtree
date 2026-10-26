@@ -76,7 +76,7 @@ Without arguments OxTree scans your home directory straight away; Preferences ca
 | Ctrl+C | Copy the path |
 | Delete | Move to trash |
 | Ctrl+G, Ctrl+T, Ctrl+Y, Ctrl+Delete | Open file manager, open terminal, check file type, delete (from the standard cleanups) |
-| Ctrl+comma | Preferences: cross filesystems, treemap rebuild delay, names on tiles, row height, size decimals, theme, update check |
+| Ctrl+comma | Preferences: cross filesystems, treemap rebuild delay, names on tiles, row height, size decimals and units, theme, update check |
 | Ctrl+Q | Quit |
 
 `.snapshot` directories are skipped. Settings live in `~/.config/oxtree/settings.conf`, written when the Preferences dialog closes and on exit; column widths, the File View choices and the search history go there too. OxTree never touches the network unless the update check is turned on in Preferences or its button is pressed; a check is one request to the GitHub releases API through `curl`. When it finds a newer release, Update Now installs it the way this copy was installed: through dnf or apt with the desktop's password prompt for a package, in place for an AppImage, after checking the download against the release's checksums. A copy from a repository also updates with the rest of the system, as usual. Cleanups come from `~/.config/oxtree/cleanups.conf`, or from QDirStat's own cleanup file when OxTree has none yet. The format and the standard set are described in [docs/cleanups.md](docs/cleanups.md).

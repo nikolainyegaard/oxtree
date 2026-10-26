@@ -6,6 +6,10 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Size units in Preferences: binary (GiB), decimal (GB) or Windows style (1024 per step labelled GB, as Explorer and WizTree show it). The default follows the platform's file manager: binary on Linux, decimal on macOS, Windows style on Windows. Sizes were binary labelled as GB everywhere before
+
 ### Changed
 
 - macOS: the app bundle runs on Intel Macs from macOS 10.12, previously 11.0 for both architectures

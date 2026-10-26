@@ -68,7 +68,7 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 | Values too wide for a cell marked with a red edge | Partial | Columns are resizable by dragging the header dividers and the tables scroll sideways, so nothing is cut off for long; no red edge | Low value now |
 | Status bar with selection totals, file count, hovered name | Done | Selection path and size, or the count and total of a multi-selection, on the left; item count, total and free space on the right; the hovered tile's name is in the tooltip | |
 | Max modified date per folder | Done | Last Modified is the newest mtime in the subtree | |
-| Configurable decimal places | Done | Size decimals in Preferences, 0 to 3 | |
+| Configurable decimal places | Done | Size decimals in Preferences, 0 to 3, and the units: binary GiB, decimal GB or WizTree's 1024 labelled GB; the platform's file manager's form by default | |
 
 ## Treemap
 
@@ -175,7 +175,7 @@ The number is honest about breadth only. Where OxTree has a feature it is usuall
 
 | WizTree feature | Status | OxTree today | What closing it touches |
 |---|---|---|---|
-| Options menu with persistent settings | Done | Edit, Preferences (Ctrl+comma) and `~/.config/oxtree/settings.conf`: cross filesystems, rebuild delay, tile names, row height, size decimals, theme, update check; the window size, the panels, the column widths, the File View choices and the search history are saved with it | |
+| Options menu with persistent settings | Done | Edit, Preferences (Ctrl+comma) and `~/.config/oxtree/settings.conf`: cross filesystems, rebuild delay, tile names, row height, size decimals and units, theme, update check; the window size, the panels, the column widths, the File View choices and the search history are saved with it | |
 | Dark mode, Windows theme, high contrast | Done | Follow the desktop, light or dark, in Preferences | No high contrast theme |
 | High DPI scaling | Done | egui scales with the compositor | |
 | Tweaks: drag and drop, double click action, rendering | Partial | Rebuild delay and tile names are the rendering tweaks | Drag and drop is declined above; double click on a file is a small item |

@@ -4,30 +4,104 @@
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 
-const UNITS: [&str; 9] = ["Bytes", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+/// How `size` divides and labels. Binary is the IEC form, decimal the SI
+/// form; Windows is Explorer's and WizTree's, 1024 per step but labelled
+/// as if it were 1000, kept so a Windows user sees Explorer's number next
+/// to Explorer's label.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SizeUnits {
+    Binary,
+    Decimal,
+    Windows,
+}
 
-/// Decimals in `size`, 0 to 3; a setting, applied once at startup and
-/// from the Preferences dialog.
+impl Default for SizeUnits {
+    /// What the platform's own file manager shows: Dolphin and `du -h`
+    /// binary, Finder decimal, Explorer the Windows form.
+    fn default() -> Self {
+        if cfg!(windows) {
+            SizeUnits::Windows
+        } else if cfg!(target_os = "macos") {
+            SizeUnits::Decimal
+        } else {
+            SizeUnits::Binary
+        }
+    }
+}
+
+impl SizeUnits {
+    fn from_u8(n: u8) -> Self {
+        match n {
+            1 => SizeUnits::Decimal,
+            2 => SizeUnits::Windows,
+            _ => SizeUnits::Binary,
+        }
+    }
+
+    fn step(self) -> f64 {
+        match self {
+            SizeUnits::Decimal => 1000.0,
+            _ => 1024.0,
+        }
+    }
+
+    fn labels(self) -> &'static [&'static str; 9] {
+        match self {
+            SizeUnits::Binary => &[
+                "Bytes", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB",
+            ],
+            SizeUnits::Decimal => &["Bytes", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"],
+            SizeUnits::Windows => &["Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"],
+        }
+    }
+}
+
+/// Decimals in `size`, 0 to 3, and its units; settings, applied once at
+/// startup and from the Preferences dialog.
 static SIZE_DECIMALS: AtomicU8 = AtomicU8::new(1);
+static SIZE_UNITS: AtomicU8 = AtomicU8::new(u8::MAX);
 
 pub fn set_size_decimals(n: u8) {
     SIZE_DECIMALS.store(n.min(3), Ordering::Relaxed);
 }
 
-/// `739 Bytes`, `1.5 MB`: base 1024, one decimal above a kilobyte unless
-/// the setting says otherwise.
+pub fn set_size_units(u: SizeUnits) {
+    SIZE_UNITS.store(u as u8, Ordering::Relaxed);
+}
+
+fn size_units() -> SizeUnits {
+    match SIZE_UNITS.load(Ordering::Relaxed) {
+        u8::MAX => SizeUnits::default(),
+        n => SizeUnits::from_u8(n),
+    }
+}
+
+/// `739 Bytes`, `1.5 MiB`: one decimal above the first unit unless the
+/// setting says otherwise.
 pub fn size(bytes: u64) -> String {
-    if bytes < 1024 {
+    size_in(
+        bytes,
+        size_units(),
+        SIZE_DECIMALS.load(Ordering::Relaxed) as usize,
+    )
+}
+
+fn size_in(bytes: u64, units: SizeUnits, decimals: usize) -> String {
+    let step = units.step();
+    let labels = units.labels();
+    let mut v = bytes as f64;
+    if v < step {
         return format!("{bytes} Bytes");
     }
-    let mut v = bytes as f64;
     let mut unit = 0;
-    while v >= 1024.0 && unit < UNITS.len() - 1 {
-        v /= 1024.0;
+    while v >= step && unit < labels.len() - 1 {
+        v /= step;
         unit += 1;
     }
-    let decimals = SIZE_DECIMALS.load(Ordering::Relaxed) as usize;
-    format!("{v:.decimals$} {}", UNITS.get(unit).copied().unwrap_or("?"))
+    format!(
+        "{v:.decimals$} {}",
+        labels.get(unit).copied().unwrap_or("?")
+    )
 }
 
 /// `1 234 567 Bytes`, with thin thousands groups like QDirStat.
@@ -111,14 +185,28 @@ mod tests {
 
     #[test]
     fn sizes() {
+        set_size_units(SizeUnits::Binary);
         assert_eq!(size(0), "0 Bytes");
         assert_eq!(size(1023), "1023 Bytes");
-        assert_eq!(size(1024), "1.0 kB");
-        assert_eq!(size(1536), "1.5 kB");
-        assert_eq!(size(14_900_000_000), "13.9 GB");
+        assert_eq!(size(1024), "1.0 KiB");
+        assert_eq!(size(1536), "1.5 KiB");
+        assert_eq!(size(14_900_000_000), "13.9 GiB");
         assert_eq!(bytes(1_234_567), "1 234 567 Bytes");
         assert_eq!(grouped(999), "999");
         assert_eq!(grouped(1000), "1 000");
+    }
+
+    #[test]
+    fn unit_forms() {
+        let n = 14_900_000_000;
+        assert_eq!(size_in(n, SizeUnits::Binary, 1), "13.9 GiB");
+        assert_eq!(size_in(n, SizeUnits::Decimal, 1), "14.9 GB");
+        assert_eq!(size_in(n, SizeUnits::Windows, 1), "13.9 GB");
+        assert_eq!(size_in(1000, SizeUnits::Decimal, 0), "1 kB");
+        assert_eq!(size_in(1000, SizeUnits::Binary, 0), "1000 Bytes");
+        for u in [SizeUnits::Binary, SizeUnits::Decimal, SizeUnits::Windows] {
+            assert_eq!(SizeUnits::from_u8(u as u8), u);
+        }
     }
 
     #[test]
