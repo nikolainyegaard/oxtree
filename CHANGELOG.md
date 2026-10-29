@@ -6,6 +6,8 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-29
+
 ### Added
 
 - Size units in Preferences: binary (GiB), decimal (GB) or Windows style (1024 per step labelled GB, as Explorer and WizTree show it). The default follows the platform's file manager: binary on Linux, decimal on macOS, Windows style on Windows. Sizes were binary labelled as GB everywhere before
@@ -74,7 +76,8 @@ The first release.
 - File names in any script, through the system's fonts
 - A `diagnostics` Cargo feature with startup timing, a screenshot mode and a benchmark binary, off in release builds
 
-[Unreleased]: https://github.com/nikolainyegaard/oxtree/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/nikolainyegaard/oxtree/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/nikolainyegaard/oxtree/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/nikolainyegaard/oxtree/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/nikolainyegaard/oxtree/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/nikolainyegaard/oxtree/compare/v0.1.0...v0.1.1
