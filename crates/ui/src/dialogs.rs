@@ -327,6 +327,13 @@ fn open_directory(app: &mut OxTreeApp, ctx: &Context) {
             "Cross into other local filesystems (kernel tables and network mounts stay out)",
         );
         ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            ui.label("Shortcuts:");
+            if ui.button("Home").clicked() {
+                open = Some(oxtree_native::config::home_dir());
+            }
+        });
+        ui.add_space(8.0);
         ui.label("Mounted filesystems:");
         egui::Grid::new("volumes")
             .num_columns(6)

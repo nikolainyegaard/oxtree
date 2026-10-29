@@ -1,6 +1,8 @@
 //! Menu bar and keyboard shortcuts, QDirStat's menu structure trimmed to
 //! what exists.
 
+use std::path::PathBuf;
+
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, Ui};
 
 use crate::app::{OxTreeApp, View};
@@ -188,6 +190,15 @@ pub fn context_menu(app: &mut OxTreeApp, ui: &mut Ui) {
         .as_ref()
         .zip(app.selected)
         .is_some_and(|(t, n)| t.is_dir_like(n) && t.kind(n) != oxtree_core::Kind::DotEntry);
+    if ui
+        .add_enabled(dir_selected, egui::Button::new("Open Directory Here"))
+        .clicked()
+    {
+        if let Some(path) = app.tree.as_ref().zip(app.selected).map(|(t, n)| t.path(n)) {
+            app.open_directory(PathBuf::from(path));
+        }
+        ui.close();
+    }
     if ui
         .add_enabled(dir_selected, egui::Button::new("Export Subtree to CSV..."))
         .clicked()

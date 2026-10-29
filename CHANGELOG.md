@@ -9,6 +9,7 @@ uses [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Size units in Preferences: binary (GiB), decimal (GB) or Windows style (1024 per step labelled GB, as Explorer and WizTree show it). The default follows the platform's file manager: binary on Linux, decimal on macOS, Windows style on Windows. Sizes were binary labelled as GB everywhere before
+- A Home shortcut in the Open Directory dialog, and "Open Directory Here" in the right-click menu of a directory, which rescans with that directory as the root
 
 ### Changed
 
